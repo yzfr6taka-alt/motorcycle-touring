@@ -8,13 +8,13 @@
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <style>
   :root{
-    --bg:#0e1116;
-    --panel:#161b22;
+    --bg:#0a0e14;
+    --panel:rgba(18,24,33,.82);
     --accent:#ff6b35;
-    --accent2:#ffb84d;
-    --text:#e6edf3;
-    --muted:#8b949e;
-    --line:#2d333b;
+    --accent2:#ffd24d;
+    --text:#f2f6fb;
+    --muted:#9fb0c0;
+    --line:rgba(255,255,255,.14);
   }
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
   html,body{height:100%;font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;background:var(--bg);color:var(--text);overflow:hidden;}
@@ -22,23 +22,18 @@
 
   .topbar{
     position:absolute;top:0;left:0;right:0;z-index:10;
-    display:flex;align-items:center;gap:10px;
-    padding:12px 14px;
-    background:linear-gradient(180deg, rgba(14,17,22,.92) 0%, rgba(14,17,22,0) 100%);
+    display:flex;align-items:center;gap:10px;padding:12px 14px;
+    background:linear-gradient(180deg, rgba(10,14,20,.85) 0%, rgba(10,14,20,0) 100%);
     pointer-events:none;
   }
-  .title{
-    font-weight:800;letter-spacing:.04em;font-size:17px;
-    display:flex;align-items:center;gap:8px;
-    text-shadow:0 1px 4px rgba(0,0,0,.6);
-  }
+  .title{font-weight:800;letter-spacing:.04em;font-size:17px;display:flex;align-items:center;gap:8px;text-shadow:0 2px 6px rgba(0,0,0,.8);}
   .title .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);}
-  .phase{font-size:11px;color:var(--muted);font-weight:600;margin-left:auto;text-shadow:0 1px 4px rgba(0,0,0,.6);}
+  .phase{font-size:11px;color:var(--muted);font-weight:600;margin-left:auto;text-shadow:0 2px 6px rgba(0,0,0,.8);}
 
   .loader{
     position:absolute;inset:0;z-index:20;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
-    background:radial-gradient(circle at 50% 40%, rgba(255,107,53,.10), transparent 60%), var(--bg);
+    background:radial-gradient(circle at 50% 38%, rgba(255,107,53,.12), transparent 60%), var(--bg);
     padding:24px;text-align:center;
   }
   .loader h1{font-size:24px;font-weight:800;letter-spacing:.02em;}
@@ -46,10 +41,8 @@
   .filebtn{
     position:relative;overflow:hidden;
     background:linear-gradient(135deg,var(--accent),var(--accent2));
-    color:#1a1207;font-weight:800;font-size:15px;
-    border:none;border-radius:14px;padding:16px 30px;
-    box-shadow:0 8px 24px rgba(255,107,53,.35);
-    cursor:pointer;letter-spacing:.03em;
+    color:#1a1207;font-weight:800;font-size:15px;border:none;border-radius:14px;padding:16px 30px;
+    box-shadow:0 8px 24px rgba(255,107,53,.4);cursor:pointer;letter-spacing:.03em;
   }
   .filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer;}
   .hint{font-size:11px;color:var(--muted);}
@@ -57,56 +50,41 @@
   .controls{
     position:absolute;left:0;right:0;bottom:0;z-index:10;
     padding:14px 14px calc(14px + env(safe-area-inset-bottom));
-    background:linear-gradient(0deg, rgba(14,17,22,.94) 35%, rgba(14,17,22,0) 100%);
+    background:linear-gradient(0deg, rgba(10,14,20,.92) 40%, rgba(10,14,20,0) 100%);
     display:none;
   }
   .controls.show{display:block;}
 
   .stats{display:flex;gap:8px;margin-bottom:12px;}
-  .stat{
-    flex:1;background:var(--panel);border:1px solid var(--line);border-radius:12px;
-    padding:9px 10px;text-align:center;
-  }
+  .stat{flex:1;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:12px;padding:9px 8px;text-align:center;}
   .stat .v{font-size:17px;font-weight:800;color:var(--accent2);line-height:1.1;}
-  .stat .l{font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:.05em;}
+  .stat .l{font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:.04em;}
 
-  /* 進捗バー */
   .progress-wrap{margin-bottom:12px;}
-  .progress-bar{
-    position:relative;height:6px;background:var(--line);border-radius:3px;overflow:hidden;cursor:pointer;
-  }
-  .progress-fill{
-    position:absolute;left:0;top:0;bottom:0;width:0%;
-    background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;
-  }
-  .progress-info{
-    display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px;
-  }
+  .progress-bar{position:relative;height:6px;background:rgba(255,255,255,.18);border-radius:3px;overflow:hidden;cursor:pointer;}
+  .progress-fill{position:absolute;left:0;top:0;bottom:0;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;}
+  .progress-info{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px;text-shadow:0 1px 3px rgba(0,0,0,.6);}
   .progress-info .cur{color:var(--accent2);font-weight:700;}
 
-  /* 再生コントロール */
   .playrow{display:flex;gap:10px;align-items:center;margin-bottom:10px;}
   .playbtn{
-    width:54px;height:54px;flex:none;
-    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1207;
-    border:none;border-radius:50%;font-size:22px;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;
-    box-shadow:0 6px 18px rgba(255,107,53,.4);
+    width:54px;height:54px;flex:none;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1207;
+    border:none;border-radius:50%;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 6px 18px rgba(255,107,53,.45);
   }
   .playbtn:active{transform:scale(.94);}
   .smallbtn{
-    flex:1;background:var(--panel);border:1px solid var(--line);color:var(--text);
+    flex:1;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--line);color:var(--text);
     border-radius:12px;padding:13px 8px;font-size:13px;font-weight:700;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;gap:5px;
+    display:flex;align-items:center;justify-content:center;
   }
   .smallbtn:active{transform:scale(.97);}
   .smallbtn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1207;border:none;}
 
-  /* カメラ切替 */
   .camrow{display:flex;gap:8px;align-items:center;margin-bottom:10px;}
-  .camlabel{font-size:12px;color:var(--muted);font-weight:700;flex:none;}
+  .camlabel{font-size:12px;color:var(--muted);font-weight:700;flex:none;text-shadow:0 1px 3px rgba(0,0,0,.6);}
   .cambtn{
-    flex:1;background:var(--panel);border:1px solid var(--line);color:var(--text);
+    flex:1;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--line);color:var(--text);
     border-radius:10px;padding:10px 6px;font-size:12px;font-weight:700;cursor:pointer;
   }
   .cambtn:active{transform:scale(.97);}
@@ -114,18 +92,27 @@
 
   .btnrow{display:flex;gap:10px;}
   .ctrlbtn{
-    flex:1;background:var(--panel);border:1px solid var(--line);color:var(--text);
+    flex:1;background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--line);color:var(--text);
     border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;
     display:flex;align-items:center;justify-content:center;gap:6px;position:relative;overflow:hidden;
   }
   .ctrlbtn:active{transform:scale(.97);}
 
+  /* タイトル演出 */
+  .cinematic{
+    position:absolute;inset:0;z-index:15;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:10px;pointer-events:none;
+    opacity:0;transition:opacity 1s;text-align:center;padding:24px;
+  }
+  .cinematic.show{opacity:1;}
+  .cinematic .ct{font-size:30px;font-weight:900;letter-spacing:.04em;text-shadow:0 3px 16px rgba(0,0,0,.9);}
+  .cinematic .cs{font-size:15px;color:var(--accent2);font-weight:800;letter-spacing:.08em;text-shadow:0 2px 10px rgba(0,0,0,.9);}
+
   .toast{
     position:absolute;top:54px;left:50%;transform:translateX(-50%);z-index:30;
-    background:var(--panel);border:1px solid var(--line);color:var(--text);
-    padding:10px 16px;border-radius:10px;font-size:13px;
-    box-shadow:0 6px 20px rgba(0,0,0,.4);opacity:0;transition:opacity .3s;pointer-events:none;
-    white-space:nowrap;
+    background:var(--panel);backdrop-filter:blur(8px);border:1px solid var(--line);color:var(--text);
+    padding:10px 16px;border-radius:10px;font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.5);
+    opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;
   }
   .toast.show{opacity:1;}
   .maplibregl-ctrl-attrib{font-size:9px;}
@@ -136,13 +123,18 @@
 
 <div class="topbar">
   <div class="title"><span class="dot"></span>ルートフライオーバー</div>
-  <div class="phase">Phase 3</div>
+  <div class="phase">衛星版</div>
+</div>
+
+<div class="cinematic" id="cinematic">
+  <div class="ct" id="cineTitle">ツーリング</div>
+  <div class="cs" id="cineSub"></div>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <div class="loader" id="loader">
-  <h1>🏍 走行ルートを<br>3Dマップに</h1>
+  <h1>🏍 走行ルートを<br>衛星3Dマップに</h1>
   <p>Geo TrackerなどでエクスポートしたGPXファイルを選んでください。端末のDownloadフォルダなどから読み込めます。</p>
   <button class="filebtn">
     GPXファイルを選ぶ
@@ -154,8 +146,8 @@
 <div class="controls" id="controls">
   <div class="stats">
     <div class="stat"><div class="v" id="statDist">–</div><div class="l">距離 km</div></div>
-    <div class="stat"><div class="v" id="statUp">–</div><div class="l">獲得標高 m</div></div>
-    <div class="stat"><div class="v" id="statEle">–</div><div class="l">現在標高 m</div></div>
+    <div class="stat"><div class="v" id="statSpd">–</div><div class="l">速度 km/h</div></div>
+    <div class="stat"><div class="v" id="statEle">–</div><div class="l">標高 m</div></div>
   </div>
 
   <div class="progress-wrap">
@@ -175,7 +167,7 @@
   </div>
 
   <div class="camrow">
-    <span class="camlabel">📷 カメラ</span>
+    <span class="camlabel">📷</span>
     <button class="cambtn" data-cam="off">全体</button>
     <button class="cambtn active" data-cam="follow">俯瞰追従</button>
     <button class="cambtn" data-cam="chase">追走</button>
@@ -192,16 +184,16 @@
 </div>
 
 <script>
+// ===== 衛星写真 + 3D地形（すべてキー不要） =====
 const style = {
   version: 8,
+  glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
   sources: {
-    basemap: {
+    satellite: {
       type: 'raster',
-      tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-              'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-              'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution: '© OpenStreetMap © CARTO'
+      tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+      tileSize: 256, maxzoom: 19,
+      attribution: 'Imagery © Esri, Maxar, Earthstar Geographics'
     },
     terrain: {
       type: 'raster-dem',
@@ -211,17 +203,30 @@ const style = {
     }
   },
   layers: [
-    { id: 'bg', type: 'background', paint: { 'background-color': '#0e1116' } },
-    { id: 'basemap', type: 'raster', source: 'basemap' }
+    { id: 'bg', type: 'background', paint: { 'background-color': '#0a0e14' } },
+    { id: 'satellite', type: 'raster', source: 'satellite' }
   ]
 };
 
 const map = new maplibregl.Map({
   container: 'map', style: style,
-  center: [130.7, 31.5], zoom: 8, pitch: 0,
+  center: [130.7, 31.5], zoom: 8, pitch: 0, maxPitch: 80,
   attributionControl: { compact: true }
 });
-map.on('load', () => { map.setTerrain({ source: 'terrain', exaggeration: 1.3 }); });
+map.on('load', () => {
+  map.setTerrain({ source: 'terrain', exaggeration: 1.4 });
+  // 空（大気）を追加して飛行感を出す
+  try {
+    map.setSky({
+      'sky-color': '#9ec9ff',
+      'sky-horizon-blend': 0.5,
+      'horizon-color': '#dfeeff',
+      'horizon-fog-blend': 0.6,
+      'fog-color': '#cdd9e6',
+      'fog-ground-blend': 0.3
+    });
+  } catch(e){}
+});
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -230,10 +235,13 @@ function toast(msg){
   t._timer = setTimeout(()=>t.classList.remove('show'), 2600);
 }
 
-// ---- GPXパース ----
+// ===== GPXパース =====
+let ROUTE_NAME = 'ツーリング';
 function parseGPX(text){
   const xml = new DOMParser().parseFromString(text, 'application/xml');
   if (xml.querySelector('parsererror')) throw new Error('GPXの解析に失敗しました');
+  const nameEl = xml.querySelector('trk > name') || xml.querySelector('metadata > name') || xml.querySelector('name');
+  ROUTE_NAME = (nameEl && nameEl.textContent.trim()) ? nameEl.textContent.trim() : 'ツーリング';
   let pts = [...xml.querySelectorAll('trkpt')];
   if (pts.length === 0) pts = [...xml.querySelectorAll('rtept')];
   if (pts.length === 0) pts = [...xml.querySelectorAll('wpt')];
@@ -244,7 +252,9 @@ function parseGPX(text){
     if (isNaN(lat) || isNaN(lon)) continue;
     const eleEl = p.querySelector('ele');
     const ele = eleEl ? parseFloat(eleEl.textContent) : null;
-    coords.push({ lon, lat, ele });
+    const timeEl = p.querySelector('time');
+    const time = timeEl ? Date.parse(timeEl.textContent) : null;
+    coords.push({ lon, lat, ele, time });
   }
   if (coords.length < 2) throw new Error('ルートの点が足りません（2点以上必要）');
   return coords;
@@ -257,81 +267,76 @@ function haversine(a, b){
   return 2*R*Math.asin(Math.sqrt(s));
 }
 
-// ---- 状態 ----
-let LINE = [];           // [[lon,lat],...]
-let ELES = [];           // 標高配列
-let CUM = [];            // 各点までの累積距離(m)
-let TOTAL = 0;           // 総距離(m)
-let currentBounds = null;
-let progress = 0;        // 0..1
-let playing = false;
-let speed = 2;
-let rafId = null;
-let lastTs = null;
-let camMode = 'follow';  // 'off' | 'follow' | 'chase'
+// ===== 状態 =====
+let LINE=[], ELES=[], TIMES=[], CUM=[], SPD=[], TOTAL=0;
+let currentBounds=null, progress=0, playing=false, speed=2, rafId=null, lastTs=null;
+let camMode='follow', camBearing=0, camInit=false;
 
-// ---- ルート描画 ----
+// ===== ルート構築 =====
 function buildRoute(coords){
-  LINE = coords.map(c => [c.lon, c.lat]);
-  ELES = coords.map(c => c.ele);
-  CUM = [0];
-  for (let i=1;i<coords.length;i++){
-    CUM[i] = CUM[i-1] + haversine(coords[i-1], coords[i]);
-  }
+  LINE = coords.map(c=>[c.lon,c.lat]);
+  ELES = coords.map(c=>c.ele);
+  TIMES = coords.map(c=>c.time);
+  CUM=[0];
+  for (let i=1;i<coords.length;i++) CUM[i]=CUM[i-1]+haversine(coords[i-1],coords[i]);
   TOTAL = CUM[CUM.length-1];
+  // 速度(km/h) 各点
+  SPD = coords.map(()=>null);
+  for (let i=1;i<coords.length;i++){
+    if (TIMES[i]!=null && TIMES[i-1]!=null && TIMES[i]>TIMES[i-1]){
+      const d = CUM[i]-CUM[i-1];
+      const dt = (TIMES[i]-TIMES[i-1])/1000;
+      SPD[i] = (d/dt)*3.6;
+    }
+  }
 
-  // 既存レイヤ削除
-  for (const id of ['route-glow','route-bg','route-done','route-start','route-end','bike-glow','bike-dot']){
+  for (const id of ['route-glow','route-bg','route-done-glow','route-done','route-start','route-end','head-glow','head-dot']){
     if (map.getLayer(id)) map.removeLayer(id);
   }
-  for (const id of ['route','route-done','route-ends','bike']){
+  for (const id of ['route','route-done','route-ends','head']){
     if (map.getSource(id)) map.removeSource(id);
   }
 
   const full = { type:'Feature', geometry:{ type:'LineString', coordinates: LINE } };
-
-  // 未走行ルート（暗め）
   map.addSource('route', { type:'geojson', data: full });
-  map.addLayer({ id:'route-glow', type:'line', source:'route',
-    layout:{'line-cap':'round','line-join':'round'},
-    paint:{'line-color':'#ff6b35','line-width':10,'line-opacity':0.12,'line-blur':6} });
+  // 未走行は控えめ
   map.addLayer({ id:'route-bg', type:'line', source:'route',
     layout:{'line-cap':'round','line-join':'round'},
-    paint:{'line-color':'#6b7785','line-width':3,'line-opacity':0.55} });
+    paint:{'line-color':'#ffffff','line-width':2,'line-opacity':0.35,'line-dasharray':[2,2]} });
 
-  // 走行済みルート（明るく光る）
-  map.addSource('route-done', { type:'geojson', data: { type:'Feature', geometry:{ type:'LineString', coordinates: [LINE[0]] } } });
+  // 走行済み（先端が伸びる本体）
+  map.addSource('route-done', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:[LINE[0]] } } });
+  map.addLayer({ id:'route-done-glow', type:'line', source:'route-done',
+    layout:{'line-cap':'round','line-join':'round'},
+    paint:{'line-color':'#ff6b35','line-width':12,'line-opacity':0.4,'line-blur':6} });
   map.addLayer({ id:'route-done', type:'line', source:'route-done',
     layout:{'line-cap':'round','line-join':'round'},
-    paint:{'line-color':'#ffb84d','line-width':5} });
+    paint:{'line-color':'#ffd24d','line-width':5} });
 
   // 始点・終点
   const ends = { type:'FeatureCollection', features:[
-    { type:'Feature', properties:{kind:'start'}, geometry:{type:'Point', coordinates: LINE[0]} },
-    { type:'Feature', properties:{kind:'end'}, geometry:{type:'Point', coordinates: LINE[LINE.length-1]} }
+    { type:'Feature', properties:{kind:'start'}, geometry:{type:'Point', coordinates:LINE[0]} },
+    { type:'Feature', properties:{kind:'end'}, geometry:{type:'Point', coordinates:LINE[LINE.length-1]} }
   ]};
   map.addSource('route-ends', { type:'geojson', data: ends });
-  map.addLayer({ id:'route-start', type:'circle', source:'route-ends',
-    filter:['==','kind','start'],
+  map.addLayer({ id:'route-start', type:'circle', source:'route-ends', filter:['==','kind','start'],
     paint:{'circle-radius':6,'circle-color':'#2ecc71','circle-stroke-width':2,'circle-stroke-color':'#fff'} });
-  map.addLayer({ id:'route-end', type:'circle', source:'route-ends',
-    filter:['==','kind','end'],
+  map.addLayer({ id:'route-end', type:'circle', source:'route-ends', filter:['==','kind','end'],
     paint:{'circle-radius':6,'circle-color':'#e74c3c','circle-stroke-width':2,'circle-stroke-color':'#fff'} });
 
-  // 走行マーカー（光る点）
-  map.addSource('bike', { type:'geojson', data:{ type:'Feature', geometry:{ type:'Point', coordinates: LINE[0] } } });
-  map.addLayer({ id:'bike-glow', type:'circle', source:'bike',
-    paint:{'circle-radius':16,'circle-color':'#ff6b35','circle-opacity':0.25,'circle-blur':1} });
-  map.addLayer({ id:'bike-dot', type:'circle', source:'bike',
+  // 先頭マーカー
+  map.addSource('head', { type:'geojson', data:{ type:'Feature', geometry:{ type:'Point', coordinates:LINE[0] } } });
+  map.addLayer({ id:'head-glow', type:'circle', source:'head',
+    paint:{'circle-radius':18,'circle-color':'#ff6b35','circle-opacity':0.3,'circle-blur':1} });
+  map.addLayer({ id:'head-dot', type:'circle', source:'head',
     paint:{'circle-radius':8,'circle-color':'#ffffff','circle-stroke-width':3,'circle-stroke-color':'#ff6b35'} });
 
-  // 範囲
   const b = new maplibregl.LngLatBounds();
   for (const p of LINE) b.extend(p);
   currentBounds = b;
 
   progress = 0;
-  document.getElementById('totDist').textContent = '/ ' + (TOTAL/1000).toFixed(1) + ' km';
+  document.getElementById('totDist').textContent = '/ '+(TOTAL/1000).toFixed(1)+' km';
   updateScene();
   fitRoute();
 }
@@ -341,237 +346,175 @@ function fitRoute(){
   map.fitBounds(currentBounds, { padding: 70, pitch: 50, duration: 1200 });
 }
 
-// 距離(0..TOTAL)から、その地点の補間座標と標高とセグメントindexを返す
 function sampleAt(distM){
-  if (distM <= 0) return { pos: LINE[0], ele: ELES[0], idx: 0 };
-  if (distM >= TOTAL) return { pos: LINE[LINE.length-1], ele: ELES[ELES.length-1], idx: LINE.length-1 };
-  // 二分探索
+  if (distM<=0) return { pos:LINE[0], ele:ELES[0], spd:SPD[1], idx:0 };
+  if (distM>=TOTAL) return { pos:LINE[LINE.length-1], ele:ELES[ELES.length-1], spd:SPD[SPD.length-1], idx:LINE.length-1 };
   let lo=0, hi=CUM.length-1;
-  while (lo < hi){
-    const mid = (lo+hi)>>1;
-    if (CUM[mid] < distM) lo = mid+1; else hi = mid;
-  }
-  const i = Math.max(1, lo);
-  const segLen = CUM[i] - CUM[i-1];
-  const t = segLen > 0 ? (distM - CUM[i-1]) / segLen : 0;
-  const lon = LINE[i-1][0] + (LINE[i][0]-LINE[i-1][0])*t;
-  const lat = LINE[i-1][1] + (LINE[i][1]-LINE[i-1][1])*t;
-  let ele = null;
-  if (ELES[i-1]!=null && ELES[i]!=null) ele = ELES[i-1] + (ELES[i]-ELES[i-1])*t;
-  return { pos:[lon,lat], ele, idx: i };
+  while (lo<hi){ const mid=(lo+hi)>>1; if (CUM[mid]<distM) lo=mid+1; else hi=mid; }
+  const i=Math.max(1,lo);
+  const segLen=CUM[i]-CUM[i-1];
+  const t=segLen>0?(distM-CUM[i-1])/segLen:0;
+  const lon=LINE[i-1][0]+(LINE[i][0]-LINE[i-1][0])*t;
+  const lat=LINE[i-1][1]+(LINE[i][1]-LINE[i-1][1])*t;
+  let ele=null;
+  if (ELES[i-1]!=null && ELES[i]!=null) ele=ELES[i-1]+(ELES[i]-ELES[i-1])*t;
+  return { pos:[lon,lat], ele, spd:SPD[i], idx:i };
 }
 
-// 2点間の方位角（度, 北=0, 東=90）
-function bearing(a, b){
-  const toRad = d => d*Math.PI/180, toDeg = r => r*180/Math.PI;
-  const dLon = toRad(b[0]-a[0]);
-  const y = Math.sin(dLon)*Math.cos(toRad(b[1]));
-  const x = Math.cos(toRad(a[1]))*Math.sin(toRad(b[1])) - Math.sin(toRad(a[1]))*Math.cos(toRad(b[1]))*Math.cos(dLon);
-  return (toDeg(Math.atan2(y,x)) + 360) % 360;
+function bearing(a,b){
+  const toRad=d=>d*Math.PI/180, toDeg=r=>r*180/Math.PI;
+  const dLon=toRad(b[0]-a[0]);
+  const y=Math.sin(dLon)*Math.cos(toRad(b[1]));
+  const x=Math.cos(toRad(a[1]))*Math.sin(toRad(b[1]))-Math.sin(toRad(a[1]))*Math.cos(toRad(b[1]))*Math.cos(dLon);
+  return (toDeg(Math.atan2(y,x))+360)%360;
 }
-
-// 角度を最短方向で補間（-180..180をまたぐ処理）
-function lerpAngle(from, to, t){
-  let diff = ((to - from + 540) % 360) - 180;
-  return from + diff * t;
-}
-
-let camBearing = 0;      // 現在のカメラ方位（滑らかに追従）
-let camInit = false;
-
-// 現在地周辺の進行方向を、少し先読みして安定させる
+function lerpAngle(from,to,t){ let d=((to-from+540)%360)-180; return from+d*t; }
 function travelBearing(distM){
-  const ahead = Math.min(TOTAL, distM + Math.max(80, TOTAL*0.01));
-  const a = sampleAt(distM).pos;
-  const b = sampleAt(ahead).pos;
-  return bearing(a, b);
+  const ahead=Math.min(TOTAL, distM+Math.max(80, TOTAL*0.01));
+  return bearing(sampleAt(distM).pos, sampleAt(ahead).pos);
 }
 
-// カメラをマーカーに追従させる
-function updateCamera(s, distM, animate){
-  if (camMode === 'off') return;
-
-  const targetBearing = travelBearing(distM);
-  if (!camInit){ camBearing = targetBearing; camInit = true; }
-  // 滑らかに方位を寄せる
-  camBearing = lerpAngle(camBearing, targetBearing, 0.08);
-
-  if (camMode === 'chase'){
-    // 追走：マーカーの後ろ上空から見る。低めピッチで迫力。
-    map.jumpTo({
-      center: s.pos,
-      zoom: 14.2,
-      pitch: 68,
-      bearing: camBearing
-    });
-  } else if (camMode === 'follow'){
-    // 俯瞰追従：高めから見下ろし、ゆるく進行方向へ向く
-    map.jumpTo({
-      center: s.pos,
-      zoom: 12.2,
-      pitch: 45,
-      bearing: camBearing
-    });
+function updateCamera(s, distM){
+  if (camMode==='off') return;
+  const tb=travelBearing(distM);
+  if (!camInit){ camBearing=tb; camInit=true; }
+  camBearing=lerpAngle(camBearing, tb, 0.10);
+  if (camMode==='chase'){
+    map.jumpTo({ center:s.pos, zoom:15.0, pitch:75, bearing:camBearing });
+  } else {
+    map.jumpTo({ center:s.pos, zoom:12.8, pitch:55, bearing:camBearing });
   }
 }
 
-// 現在のprogressに基づいて全要素を更新
 function updateScene(){
-  const distM = progress * TOTAL;
-  const s = sampleAt(distM);
-
-  // 走行済みライン: 0..idx の座標 + 現在地
-  const doneCoords = LINE.slice(0, s.idx).concat([s.pos]);
+  const distM=progress*TOTAL;
+  const s=sampleAt(distM);
+  const doneCoords=LINE.slice(0,s.idx).concat([s.pos]);
   if (map.getSource('route-done')){
-    map.getSource('route-done').setData({ type:'Feature', geometry:{ type:'LineString', coordinates: doneCoords.length>=2 ? doneCoords : [LINE[0], LINE[0]] } });
+    map.getSource('route-done').setData({ type:'Feature', geometry:{ type:'LineString', coordinates: doneCoords.length>=2?doneCoords:[LINE[0],LINE[0]] } });
   }
-  // マーカー
-  if (map.getSource('bike')){
-    map.getSource('bike').setData({ type:'Feature', geometry:{ type:'Point', coordinates: s.pos } });
+  if (map.getSource('head')){
+    map.getSource('head').setData({ type:'Feature', geometry:{ type:'Point', coordinates:s.pos } });
   }
-  // 数値
-  document.getElementById('curDist').textContent = (distM/1000).toFixed(1) + ' km';
-  document.getElementById('statEle').textContent = s.ele!=null ? Math.round(s.ele) : '–';
-  document.getElementById('progressFill').style.width = (progress*100) + '%';
-
-  // カメラ追従
+  document.getElementById('curDist').textContent=(distM/1000).toFixed(1)+' km';
+  document.getElementById('statEle').textContent=s.ele!=null?Math.round(s.ele):'–';
+  document.getElementById('statSpd').textContent=s.spd!=null?Math.round(s.spd):'–';
+  document.getElementById('progressFill').style.width=(progress*100)+'%';
   updateCamera(s, distM);
 }
 
-// ---- 再生ループ ----
+// タイトル演出
+function showCinematic(title, sub, holdMs){
+  const el=document.getElementById('cinematic');
+  document.getElementById('cineTitle').textContent=title;
+  document.getElementById('cineSub').textContent=sub;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t=setTimeout(()=>el.classList.remove('show'), holdMs||2600);
+}
+
+// ===== 再生 =====
 function tick(ts){
   if (!playing) return;
-  if (lastTs == null) lastTs = ts;
-  const dt = (ts - lastTs)/1000; // 秒
-  lastTs = ts;
-
-  // 速度: 基準で全体を約40秒で走破。speed倍する。
-  const baseDuration = 40;
-  progress += (dt / baseDuration) * speed;
-  if (progress >= 1){ progress = 1; updateScene(); stopPlay(); toast('ゴール！'); return; }
-
+  if (lastTs==null) lastTs=ts;
+  const dt=(ts-lastTs)/1000; lastTs=ts;
+  const baseDuration=45;
+  progress += (dt/baseDuration)*speed;
+  if (progress>=1){
+    progress=1; updateScene(); stopPlay();
+    const totMin = (TIMES[0]!=null && TIMES[TIMES.length-1]!=null) ? Math.round((TIMES[TIMES.length-1]-TIMES[0])/60000) : null;
+    showCinematic('完走！', (TOTAL/1000).toFixed(1)+' km'+(totMin!=null?'  /  '+totMin+'分':''), 4000);
+    return;
+  }
   updateScene();
-  rafId = requestAnimationFrame(tick);
+  rafId=requestAnimationFrame(tick);
 }
 
 function startPlay(){
-  if (TOTAL <= 0) return;
-  if (progress >= 1) progress = 0; // 終わってたら頭から
-  playing = true; lastTs = null;
-  document.getElementById('btnPlay').textContent = '⏸';
-
-  // 追従系なら、走り出す前にカメラを現在地へ寄せる
-  if (camMode !== 'off'){
-    const s = sampleAt(progress * TOTAL);
-    camInit = false;
-    const targetBearing = travelBearing(progress * TOTAL);
-    camBearing = targetBearing;
-    map.easeTo({
-      center: s.pos,
-      zoom: camMode === 'chase' ? 14.2 : 12.2,
-      pitch: camMode === 'chase' ? 68 : 45,
-      bearing: targetBearing,
-      duration: 1400
-    });
-    setTimeout(() => { if (playing){ lastTs = null; rafId = requestAnimationFrame(tick); } }, 1400);
+  if (TOTAL<=0) return;
+  if (progress>=1) progress=0;
+  playing=true; lastTs=null;
+  document.getElementById('btnPlay').textContent='⏸';
+  if (progress===0){
+    showCinematic(ROUTE_NAME, (TOTAL/1000).toFixed(1)+' km', 2600);
+  }
+  if (camMode!=='off'){
+    const s=sampleAt(progress*TOTAL);
+    camInit=false;
+    const tb=travelBearing(progress*TOTAL); camBearing=tb;
+    map.easeTo({ center:s.pos, zoom:camMode==='chase'?15.0:12.8, pitch:camMode==='chase'?75:55, bearing:tb, duration:1500 });
+    setTimeout(()=>{ if(playing){ lastTs=null; rafId=requestAnimationFrame(tick); } }, 1500);
   } else {
-    rafId = requestAnimationFrame(tick);
+    rafId=requestAnimationFrame(tick);
   }
 }
 function stopPlay(){
-  playing = false;
+  playing=false;
   if (rafId) cancelAnimationFrame(rafId);
-  document.getElementById('btnPlay').textContent = '▶';
+  document.getElementById('btnPlay').textContent='▶';
 }
-function togglePlay(){ playing ? stopPlay() : startPlay(); }
+function togglePlay(){ playing?stopPlay():startPlay(); }
 
-// ---- ファイル読み込み ----
+// ===== ファイル =====
 function handleFile(file){
   if (!file) return;
   stopPlay();
-  const reader = new FileReader();
-  reader.onload = e => {
+  const reader=new FileReader();
+  reader.onload=e=>{
     try{
-      const coords = parseGPX(e.target.result);
-      // stats
-      let up = 0;
+      const coords=parseGPX(e.target.result);
+      let up=0;
       for (let i=1;i<coords.length;i++){
-        if (coords[i].ele!=null && coords[i-1].ele!=null){
-          const d = coords[i].ele - coords[i-1].ele;
-          if (d>0) up += d;
-        }
+        if (coords[i].ele!=null && coords[i-1].ele!=null){ const d=coords[i].ele-coords[i-1].ele; if (d>0) up+=d; }
       }
-      window._coords = coords;
-      const build = () => {
+      window._coords=coords;
+      const build=()=>{
         buildRoute(coords);
-        let total = 0;
-        for (let i=1;i<coords.length;i++) total += haversine(coords[i-1],coords[i]);
-        document.getElementById('statDist').textContent = (total/1000).toFixed(1);
-        document.getElementById('statUp').textContent = Math.round(up);
+        let total=0;
+        for (let i=1;i<coords.length;i++) total+=haversine(coords[i-1],coords[i]);
+        document.getElementById('statDist').textContent=(total/1000).toFixed(1);
       };
       if (map.isStyleLoaded()) build(); else map.once('idle', build);
-
-      document.getElementById('loader').style.display = 'none';
+      document.getElementById('loader').style.display='none';
       document.getElementById('controls').classList.add('show');
       toast(`読み込み完了：${coords.length}点`);
-    }catch(err){
-      toast('⚠ ' + err.message);
-      console.error(err);
-    }
+    }catch(err){ toast('⚠ '+err.message); console.error(err); }
   };
-  reader.onerror = () => toast('⚠ ファイルの読み込みに失敗しました');
+  reader.onerror=()=>toast('⚠ ファイルの読み込みに失敗しました');
   reader.readAsText(file);
 }
 
-// ---- イベント ----
-document.getElementById('fileInput').addEventListener('change', e => handleFile(e.target.files[0]));
-document.getElementById('fileInput2').addEventListener('change', e => handleFile(e.target.files[0]));
+document.getElementById('fileInput').addEventListener('change', e=>handleFile(e.target.files[0]));
+document.getElementById('fileInput2').addEventListener('change', e=>handleFile(e.target.files[0]));
 document.getElementById('btnFit').addEventListener('click', fitRoute);
 document.getElementById('btnPlay').addEventListener('click', togglePlay);
-document.getElementById('btnReset').addEventListener('click', () => {
-  stopPlay(); progress = 0; updateScene();
-});
+document.getElementById('btnReset').addEventListener('click', ()=>{ stopPlay(); progress=0; updateScene(); });
 
-// 速度ボタン
-document.querySelectorAll('.smallbtn[data-speed]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    speed = parseFloat(btn.dataset.speed);
-    document.querySelectorAll('.smallbtn[data-speed]').forEach(b => b.classList.remove('active'));
+document.querySelectorAll('.smallbtn[data-speed]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    speed=parseFloat(btn.dataset.speed);
+    document.querySelectorAll('.smallbtn[data-speed]').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
   });
 });
-
-// カメラモードボタン
-document.querySelectorAll('.cambtn[data-cam]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    camMode = btn.dataset.cam;
-    document.querySelectorAll('.cambtn[data-cam]').forEach(b => b.classList.remove('active'));
+document.querySelectorAll('.cambtn[data-cam]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    camMode=btn.dataset.cam;
+    document.querySelectorAll('.cambtn[data-cam]').forEach(b=>b.classList.remove('active'));
     btn.classList.add('active');
-    camInit = false;
-    if (camMode === 'off'){
-      // 全体表示に戻す
-      fitRoute();
-    } else {
-      // 即座に現在地へ寄せる
-      const s = sampleAt(progress * TOTAL);
-      const tb = travelBearing(progress * TOTAL);
-      camBearing = tb;
-      map.easeTo({
-        center: s.pos,
-        zoom: camMode === 'chase' ? 14.2 : 12.2,
-        pitch: camMode === 'chase' ? 68 : 45,
-        bearing: tb,
-        duration: 1000
-      });
+    camInit=false;
+    if (camMode==='off'){ fitRoute(); }
+    else{
+      const s=sampleAt(progress*TOTAL);
+      const tb=travelBearing(progress*TOTAL); camBearing=tb;
+      map.easeTo({ center:s.pos, zoom:camMode==='chase'?15.0:12.8, pitch:camMode==='chase'?75:55, bearing:tb, duration:1000 });
     }
   });
 });
-
-// 進捗バーをタップでシーク
-document.getElementById('progressBar').addEventListener('click', (e) => {
-  const rect = e.currentTarget.getBoundingClientRect();
-  const r = (e.clientX - rect.left) / rect.width;
-  progress = Math.max(0, Math.min(1, r));
+document.getElementById('progressBar').addEventListener('click', (e)=>{
+  const rect=e.currentTarget.getBoundingClientRect();
+  const r=(e.clientX-rect.left)/rect.width;
+  progress=Math.max(0,Math.min(1,r));
   updateScene();
 });
 </script>
