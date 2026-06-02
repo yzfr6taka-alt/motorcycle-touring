@@ -122,17 +122,30 @@
   }
   .toast.show{opacity:1;}
   .maplibregl-ctrl-attrib{font-size:9px;}
+  /* シネマモード */
+  .topbar,.controls{transition:opacity .45s ease;}
+  #cinema-overlay{position:absolute;top:12px;left:12px;z-index:15;pointer-events:none;display:none;}
+  #elevCanvas{display:block;border-radius:10px;background:rgba(14,17,22,.78);}
+  #cinema-stats{display:flex;gap:6px;margin-top:5px;}
+  .cs-badge{background:rgba(14,17,22,.78);border-radius:20px;padding:4px 10px;font-size:12px;font-weight:800;color:var(--accent2);letter-spacing:.02em;}
 </style>
 </head>
 <body>
 <div id="map"></div>
 
-<div class="topbar">
+<div class="topbar" id="topbar">
   <div class="title"><span class="dot"></span>ルートフライオーバー</div>
   <div class="phase">Phase 3</div>
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="cinema-overlay">
+  <canvas id="elevCanvas" width="160" height="54"></canvas>
+  <div id="cinema-stats">
+    <span class="cs-badge" id="cinemaEle">↑ –</span>
+    <span class="cs-badge" id="cinemaDist">– km</span>
+  </div>
+</div>
 
 <div class="loader" id="loader">
   <h1>🏍 走行ルートを<br>3Dマップに</h1>
@@ -177,6 +190,7 @@
       別のGPX
       <input type="file" id="fileInput2" accept=".gpx,application/gpx+xml,text/xml" style="position:absolute;inset:0;opacity:0;">
     </button>
+    <button class="ctrlbtn" id="btnCinema">🎬 シネマ</button>
   </div>
 </div>
 
@@ -267,6 +281,10 @@ let playing = false;
 let rafId = null;
 let lastTs = null;
 let camMode = 'follow';  // 'off' | 'follow' | 'chase'
+let cinemaMode = false;
+let cinemaTapTimer = null;
+let elevPts = [];
+let elevMeta = { minE: 0, maxE: 0 };
 
 // ---- ルート描画 ----
 function buildRoute(coords){
@@ -277,6 +295,18 @@ function buildRoute(coords){
     CUM[i] = CUM[i-1] + haversine(coords[i-1], coords[i]);
   }
   TOTAL = CUM[CUM.length-1];
+
+  // シネマ用：標高プロファイルを160点に正規化してキャッシュ
+  const EP_N = 160;
+  elevPts = [];
+  elevMeta = { minE: Infinity, maxE: -Infinity };
+  for (let i = 0; i < EP_N; i++) {
+    const ep = sampleAt((i / (EP_N - 1)) * TOTAL);
+    const e = ep.ele != null ? ep.ele : 0;
+    elevPts.push(e);
+    if (e < elevMeta.minE) elevMeta.minE = e;
+    if (e > elevMeta.maxE) elevMeta.maxE = e;
+  }
 
   // 既存レイヤ削除
   for (const id of ['route-glow','route-bg','route-done','route-start','route-end','bike-glow','bike-dot']){
@@ -437,6 +467,9 @@ function updateScene(){
 
   // カメラ追従
   updateCamera(s, distM);
+
+  // シネマオーバーレイ更新
+  if (cinemaMode){ drawElevGraph(); updateCinemaStats(); }
 }
 
 // ---- 再生ループ ----
@@ -490,6 +523,94 @@ function stopPlay(){
   document.getElementById('btnPlay').textContent = '▶';
 }
 function togglePlay(){ playing ? stopPlay() : startPlay(); }
+
+// ---- シネマモード ----
+function drawElevGraph(){
+  if (elevPts.length < 2) return;
+  const cv = document.getElementById('elevCanvas');
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  const range = elevMeta.maxE - elevMeta.minE || 1;
+  const toX = i => (i / (elevPts.length - 1)) * W;
+  const toY = e => H - ((e - elevMeta.minE) / range) * (H - 8) - 4;
+
+  // 塗り
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  for (let i = 0; i < elevPts.length; i++) ctx.lineTo(toX(i), toY(elevPts[i]));
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255,107,53,0.22)';
+  ctx.fill();
+
+  // ライン
+  ctx.beginPath();
+  for (let i = 0; i < elevPts.length; i++) {
+    i === 0 ? ctx.moveTo(toX(i), toY(elevPts[i])) : ctx.lineTo(toX(i), toY(elevPts[i]));
+  }
+  ctx.strokeStyle = '#ff6b35';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // 現在地カーソル
+  const cx = progress * W;
+  ctx.beginPath();
+  ctx.moveTo(cx, 0);
+  ctx.lineTo(cx, H);
+  ctx.strokeStyle = '#ffb84d';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function updateCinemaStats(){
+  const distM = progress * TOTAL;
+  const s = sampleAt(distM);
+  document.getElementById('cinemaEle').textContent = s.ele != null ? '↑ ' + Math.round(s.ele) + 'm' : '↑ –';
+  document.getElementById('cinemaDist').textContent = (distM / 1000).toFixed(1) + ' km';
+}
+
+function setCinemaUI(mode){
+  const topbar = document.getElementById('topbar');
+  const controls = document.getElementById('controls');
+  const overlay = document.getElementById('cinema-overlay');
+  if (mode === 'on'){
+    topbar.style.opacity = '0';
+    topbar.style.pointerEvents = 'none';
+    controls.style.opacity = '0';
+    controls.style.pointerEvents = 'none';
+    overlay.style.display = 'block';
+    cinemaMode = true;
+  } else if (mode === 'off'){
+    topbar.style.opacity = '';
+    topbar.style.pointerEvents = '';
+    controls.style.opacity = '';
+    controls.style.pointerEvents = '';
+    overlay.style.display = 'none';
+    cinemaMode = false;
+    document.getElementById('btnCinema').textContent = '🎬 シネマ';
+  } else if (mode === 'peek'){
+    if (!cinemaMode) return;
+    topbar.style.opacity = '1';
+    topbar.style.pointerEvents = 'auto';
+    controls.style.opacity = '1';
+    controls.style.pointerEvents = 'auto';
+    clearTimeout(cinemaTapTimer);
+    cinemaTapTimer = setTimeout(() => setCinemaUI('on'), 3000);
+  }
+}
+
+function toggleCinema(){
+  if (cinemaMode){
+    setCinemaUI('off');
+  } else {
+    if (TOTAL <= 0){ toast('GPXファイルを先に読み込んでください'); return; }
+    setCinemaUI('on');
+    drawElevGraph();
+    updateCinemaStats();
+    document.getElementById('btnCinema').textContent = '✕ 解除';
+  }
+}
 
 // ---- ファイル読み込み ----
 function handleFile(file){
@@ -574,6 +695,9 @@ document.getElementById('progressBar').addEventListener('click', (e) => {
   progress = Math.max(0, Math.min(1, r));
   updateScene();
 });
+
+document.getElementById('btnCinema').addEventListener('click', toggleCinema);
+map.on('click', () => { if (cinemaMode) setCinemaUI('peek'); });
 </script>
 </body>
 </html>
