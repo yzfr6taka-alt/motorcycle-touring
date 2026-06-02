@@ -85,22 +85,15 @@
   .progress-info .cur{color:var(--accent2);font-weight:700;}
 
   /* 再生コントロール */
-  .playrow{display:flex;gap:10px;align-items:center;margin-bottom:10px;}
+  .playrow{display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:10px;}
   .playbtn{
-    width:54px;height:54px;flex:none;
+    width:60px;height:60px;flex:none;
     background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1207;
-    border:none;border-radius:50%;font-size:22px;cursor:pointer;
+    border:none;border-radius:50%;font-size:24px;cursor:pointer;
     display:flex;align-items:center;justify-content:center;
     box-shadow:0 6px 18px rgba(255,107,53,.4);
   }
   .playbtn:active{transform:scale(.94);}
-  .smallbtn{
-    flex:1;background:var(--panel);border:1px solid var(--line);color:var(--text);
-    border-radius:12px;padding:13px 8px;font-size:13px;font-weight:700;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;gap:5px;
-  }
-  .smallbtn:active{transform:scale(.97);}
-  .smallbtn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1207;border:none;}
 
   /* カメラ切替 */
   .camrow{display:flex;gap:8px;align-items:center;margin-bottom:10px;}
@@ -168,10 +161,6 @@
 
   <div class="playrow">
     <button class="playbtn" id="btnPlay">▶</button>
-    <button class="smallbtn" data-speed="1">1×</button>
-    <button class="smallbtn active" data-speed="2">2×</button>
-    <button class="smallbtn" data-speed="4">4×</button>
-    <button class="smallbtn" data-speed="8">8×</button>
   </div>
 
   <div class="camrow">
@@ -275,7 +264,6 @@ let TOTAL = 0;           // 総距離(m)
 let currentBounds = null;
 let progress = 0;        // 0..1
 let playing = false;
-let speed = 2;
 let rafId = null;
 let lastTs = null;
 let camMode = 'follow';  // 'off' | 'follow' | 'chase'
@@ -386,7 +374,9 @@ function lerpAngle(from, to, t){
   return from + diff * t;
 }
 
-let camBearing = 0;      // 現在のカメラ方位（滑らかに追従）
+// カメラ平滑化用の現在値（毎フレーム目標へ少しずつ寄せる）
+let camLon = 0, camLat = 0;  // 現在のカメラ中心（補間済）
+let camBearing = 0;           // 現在のカメラ方位（補間済）
 let camInit = false;
 
 // 現在地周辺の進行方向を、少し先読みして安定させる
@@ -397,32 +387,33 @@ function travelBearing(distM){
   return bearing(a, b);
 }
 
-// カメラをマーカーに追従させる
-function updateCamera(s, distM, animate){
+// カメラをマーカーに平滑追従させる
+function updateCamera(s, distM){
   if (camMode === 'off') return;
 
   const targetBearing = travelBearing(distM);
-  if (!camInit){ camBearing = targetBearing; camInit = true; }
-  // 滑らかに方位を寄せる
-  camBearing = lerpAngle(camBearing, targetBearing, 0.08);
 
-  if (camMode === 'chase'){
-    // 追走：マーカーの後ろ上空から見る。低めピッチで迫力。
-    map.jumpTo({
-      center: s.pos,
-      zoom: 14.2,
-      pitch: 68,
-      bearing: camBearing
-    });
-  } else if (camMode === 'follow'){
-    // 俯瞰追従：高めから見下ろし、ゆるく進行方向へ向く
-    map.jumpTo({
-      center: s.pos,
-      zoom: 12.2,
-      pitch: 45,
-      bearing: camBearing
-    });
+  // 初回フレームは現在地にスナップして即時同期（jumpToの急変を防ぐ）
+  if (!camInit){
+    camLon = s.pos[0]; camLat = s.pos[1];
+    camBearing = targetBearing;
+    camInit = true;
   }
+
+  // 中心座標を目標（マーカー位置）へ毎フレーム近づける
+  // 係数0.08 ≒ 60fpsで約200msのラグ → 衛星タイルの読込に余裕を与えつつ滑らかに追従
+  camLon += (s.pos[0] - camLon) * 0.08;
+  camLat += (s.pos[1] - camLat) * 0.08;
+
+  // 方位を目標方向へ近づける（0.06でやや遅めの旋回 → シネマチックな旋回感）
+  camBearing = lerpAngle(camBearing, targetBearing, 0.06);
+
+  map.jumpTo({
+    center: [camLon, camLat],
+    zoom: camMode === 'chase' ? 14.2 : 12.2,
+    pitch: camMode === 'chase' ? 68 : 45,
+    bearing: camBearing
+  });
 }
 
 // 現在のprogressに基づいて全要素を更新
@@ -449,15 +440,18 @@ function updateScene(){
 }
 
 // ---- 再生ループ ----
+// 全体を走破するおおよその秒数（ゆっくり眺めるペース: 目標90〜120秒）
+const BASE_DURATION = 100;
+
 function tick(ts){
   if (!playing) return;
   if (lastTs == null) lastTs = ts;
-  const dt = (ts - lastTs)/1000; // 秒
+  // タブ非表示からの復帰やフレーム落ちでdtが大きくなる場合をキャップ（最大100ms）
+  // → 大ジャンプを防いで視点がカクッと飛ばないようにする
+  const dt = Math.min((ts - lastTs) / 1000, 0.1);
   lastTs = ts;
 
-  // 速度: 基準で全体を約40秒で走破。speed倍する。
-  const baseDuration = 40;
-  progress += (dt / baseDuration) * speed;
+  progress += dt / BASE_DURATION;
   if (progress >= 1){ progress = 1; updateScene(); stopPlay(); toast('ゴール！'); return; }
 
   updateScene();
@@ -466,16 +460,18 @@ function tick(ts){
 
 function startPlay(){
   if (TOTAL <= 0) return;
-  if (progress >= 1) progress = 0; // 終わってたら頭から
+  if (progress >= 1) progress = 0;
   playing = true; lastTs = null;
   document.getElementById('btnPlay').textContent = '⏸';
 
-  // 追従系なら、走り出す前にカメラを現在地へ寄せる
   if (camMode !== 'off'){
     const s = sampleAt(progress * TOTAL);
-    camInit = false;
     const targetBearing = travelBearing(progress * TOTAL);
+    // easeTo前にカメラ平滑化の現在値を開始位置に合わせておく
+    // → RAF開始直後の1フレーム目でjumpToが急変しないようにする
+    camLon = s.pos[0]; camLat = s.pos[1];
     camBearing = targetBearing;
+    camInit = true;
     map.easeTo({
       center: s.pos,
       zoom: camMode === 'chase' ? 14.2 : 12.2,
@@ -539,16 +535,9 @@ document.getElementById('fileInput2').addEventListener('change', e => handleFile
 document.getElementById('btnFit').addEventListener('click', fitRoute);
 document.getElementById('btnPlay').addEventListener('click', togglePlay);
 document.getElementById('btnReset').addEventListener('click', () => {
-  stopPlay(); progress = 0; updateScene();
-});
-
-// 速度ボタン
-document.querySelectorAll('.smallbtn[data-speed]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    speed = parseFloat(btn.dataset.speed);
-    document.querySelectorAll('.smallbtn[data-speed]').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-  });
+  stopPlay(); progress = 0;
+  camInit = false; // リセット時はカメラを開始地点にスナップ（徐々に戻るのを防ぐ）
+  updateScene();
 });
 
 // カメラモードボタン
@@ -557,15 +546,16 @@ document.querySelectorAll('.cambtn[data-cam]').forEach(btn => {
     camMode = btn.dataset.cam;
     document.querySelectorAll('.cambtn[data-cam]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    camInit = false;
     if (camMode === 'off'){
-      // 全体表示に戻す
+      camInit = false;
       fitRoute();
     } else {
-      // 即座に現在地へ寄せる
       const s = sampleAt(progress * TOTAL);
       const tb = travelBearing(progress * TOTAL);
+      // カメラ平滑化の現在値を切替先の位置にリセット（切替時のワープを防ぐ）
+      camLon = s.pos[0]; camLat = s.pos[1];
       camBearing = tb;
+      camInit = true;
       map.easeTo({
         center: s.pos,
         zoom: camMode === 'chase' ? 14.2 : 12.2,
