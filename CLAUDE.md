@@ -33,9 +33,13 @@ Only MapLibre GL JS v4.7.1. No other external libraries.
 
 ### Map setup
 
-- **Base tiles**: CARTO Dark Matter raster (`a/b/c.basemaps.cartocdn.com/dark_all`)
-- **Terrain DEM**: Mapzen/AWS terrarium tiles (`s3.amazonaws.com/elevation-tiles-prod/terrarium`)
+- **Satellite tiles**: Esri World Imagery raster (`server.arcgisonline.com/…/World_Imagery/MapServer/tile/{z}/{y}/{x}`)
+  - API key not required. `maxzoom: 19`. **Tile URL uses `{z}/{y}/{x}` order** (not `{z}/{x}/{y}` — Esri convention).
+  - `raster-fade-duration: 100` (reduced from default 300 ms to suppress blurring on tile load)
+  - `raster-resampling: 'linear'` (bilinear, explicitly set)
+- **Terrain DEM**: Mapzen/AWS terrarium tiles (`s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png`)
 - **Terrain exaggeration**: `1.3×`
+- **Pixel ratio**: `Math.min(window.devicePixelRatio || 1, 2)` — renders at 2× on high-DPR phones (DPR=3 devices capped at 2 for GPU budget)
 - Initial center: `[130.7, 31.5]` (Kyushu region, Japan), zoom 8
 
 ### State variables
@@ -74,6 +78,8 @@ Only MapLibre GL JS v4.7.1. No other external libraries.
 
 | Source ID | Type | Description |
 |---|---|---|
+| `satellite` | raster | Esri World Imagery base map (always present) |
+| `terrain` | raster-dem | Mapzen/AWS elevation data (always present) |
 | `route` | geojson LineString | Full route (static) |
 | `route-done` | geojson LineString | Travelled portion (updated each frame) |
 | `route-ends` | geojson FeatureCollection | Start (green) and end (red) markers |
@@ -81,6 +87,8 @@ Only MapLibre GL JS v4.7.1. No other external libraries.
 
 | Layer ID | Type | Source |
 |---|---|---|
+| `bg` | background | — dark fallback while tiles load |
+| `satellite` | raster | `satellite` — Esri World Imagery |
 | `route-glow` | line | `route` — orange glow, opacity 0.12 |
 | `route-bg` | line | `route` — grey unvisited path |
 | `route-done` | line | `route-done` — amber travelled path |

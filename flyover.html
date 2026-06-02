@@ -195,13 +195,14 @@
 const style = {
   version: 8,
   sources: {
-    basemap: {
+    satellite: {
       type: 'raster',
-      tiles: ['https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-              'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-              'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'],
+      // Esri World Imagery — APIキー不要・商用利用可・高ズーム対応
+      // 注意: Esri タイルは {z}/{y}/{x} 順（MapLibre標準の {z}/{x}/{y} と逆）
+      tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
       tileSize: 256,
-      attribution: '© OpenStreetMap © CARTO'
+      maxzoom: 19,
+      attribution: 'Tiles © Esri — Esri, Maxar, Earthstar Geographics'
     },
     terrain: {
       type: 'raster-dem',
@@ -212,14 +213,23 @@ const style = {
   },
   layers: [
     { id: 'bg', type: 'background', paint: { 'background-color': '#0e1116' } },
-    { id: 'basemap', type: 'raster', source: 'basemap' }
+    { id: 'satellite', type: 'raster', source: 'satellite',
+      paint: {
+        // タイル読込時のフェードを短縮してもやつき抑制（デフォルト300ms → 100ms）
+        'raster-fade-duration': 100,
+        // 双線形補間でスムーズに（MapLibreデフォルト値だが明示）
+        'raster-resampling': 'linear'
+      }
+    }
   ]
 };
 
 const map = new maplibregl.Map({
   container: 'map', style: style,
   center: [130.7, 31.5], zoom: 8, pitch: 0,
-  attributionControl: { compact: true }
+  attributionControl: { compact: true },
+  // DPR=3端末でも2倍止めにしてGPU負荷を抑えつつ高精細化（1倍→2倍で視認性は大幅向上）
+  pixelRatio: Math.min(window.devicePixelRatio || 1, 2)
 });
 map.on('load', () => { map.setTerrain({ source: 'terrain', exaggeration: 1.3 }); });
 
