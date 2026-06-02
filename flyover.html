@@ -20,7 +20,6 @@
   html,body{height:100%;font-family:-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;background:var(--bg);color:var(--text);overflow:hidden;}
   #map{position:absolute;inset:0;}
 
-  /* ヘッダー */
   .topbar{
     position:absolute;top:0;left:0;right:0;z-index:10;
     display:flex;align-items:center;gap:10px;
@@ -36,7 +35,6 @@
   .title .dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);}
   .phase{font-size:11px;color:var(--muted);font-weight:600;margin-left:auto;text-shadow:0 1px 4px rgba(0,0,0,.6);}
 
-  /* 読み込みボタン（中央の最初の状態） */
   .loader{
     position:absolute;inset:0;z-index:20;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;
@@ -56,30 +54,60 @@
   .filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer;}
   .hint{font-size:11px;color:var(--muted);}
 
-  /* 下部コントロール */
   .controls{
     position:absolute;left:0;right:0;bottom:0;z-index:10;
     padding:14px 14px calc(14px + env(safe-area-inset-bottom));
-    background:linear-gradient(0deg, rgba(14,17,22,.94) 30%, rgba(14,17,22,0) 100%);
+    background:linear-gradient(0deg, rgba(14,17,22,.94) 35%, rgba(14,17,22,0) 100%);
     display:none;
   }
   .controls.show{display:block;}
-  .stats{
-    display:flex;gap:8px;margin-bottom:12px;
-  }
+
+  .stats{display:flex;gap:8px;margin-bottom:12px;}
   .stat{
     flex:1;background:var(--panel);border:1px solid var(--line);border-radius:12px;
     padding:9px 10px;text-align:center;
   }
   .stat .v{font-size:17px;font-weight:800;color:var(--accent2);line-height:1.1;}
   .stat .l{font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:.05em;}
+
+  /* 進捗バー */
+  .progress-wrap{margin-bottom:12px;}
+  .progress-bar{
+    position:relative;height:6px;background:var(--line);border-radius:3px;overflow:hidden;cursor:pointer;
+  }
+  .progress-fill{
+    position:absolute;left:0;top:0;bottom:0;width:0%;
+    background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:3px;
+  }
+  .progress-info{
+    display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px;
+  }
+  .progress-info .cur{color:var(--accent2);font-weight:700;}
+
+  /* 再生コントロール */
+  .playrow{display:flex;gap:10px;align-items:center;margin-bottom:10px;}
+  .playbtn{
+    width:54px;height:54px;flex:none;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1207;
+    border:none;border-radius:50%;font-size:22px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 6px 18px rgba(255,107,53,.4);
+  }
+  .playbtn:active{transform:scale(.94);}
+  .smallbtn{
+    flex:1;background:var(--panel);border:1px solid var(--line);color:var(--text);
+    border-radius:12px;padding:13px 8px;font-size:13px;font-weight:700;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:5px;
+  }
+  .smallbtn:active{transform:scale(.97);}
+  .smallbtn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1207;border:none;}
+
   .btnrow{display:flex;gap:10px;}
   .ctrlbtn{
     flex:1;background:var(--panel);border:1px solid var(--line);color:var(--text);
-    border-radius:12px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;
-    display:flex;align-items:center;justify-content:center;gap:7px;
+    border-radius:12px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;gap:6px;position:relative;overflow:hidden;
   }
-  .ctrlbtn.primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1207;border:none;}
   .ctrlbtn:active{transform:scale(.97);}
 
   .toast{
@@ -98,7 +126,7 @@
 
 <div class="topbar">
   <div class="title"><span class="dot"></span>ルートフライオーバー</div>
-  <div class="phase">Phase 1</div>
+  <div class="phase">Phase 2</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -117,11 +145,29 @@
   <div class="stats">
     <div class="stat"><div class="v" id="statDist">–</div><div class="l">距離 km</div></div>
     <div class="stat"><div class="v" id="statUp">–</div><div class="l">獲得標高 m</div></div>
-    <div class="stat"><div class="v" id="statPts">–</div><div class="l">ポイント数</div></div>
+    <div class="stat"><div class="v" id="statEle">–</div><div class="l">現在標高 m</div></div>
   </div>
+
+  <div class="progress-wrap">
+    <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-info">
+      <span class="cur" id="curDist">0.0 km</span>
+      <span id="totDist">/ – km</span>
+    </div>
+  </div>
+
+  <div class="playrow">
+    <button class="playbtn" id="btnPlay">▶</button>
+    <button class="smallbtn" data-speed="1">1×</button>
+    <button class="smallbtn active" data-speed="2">2×</button>
+    <button class="smallbtn" data-speed="4">4×</button>
+    <button class="smallbtn" data-speed="8">8×</button>
+  </div>
+
   <div class="btnrow">
+    <button class="ctrlbtn" id="btnReset">⏮ 最初へ</button>
     <button class="ctrlbtn" id="btnFit">🗺 全体表示</button>
-    <button class="ctrlbtn primary">
+    <button class="ctrlbtn">
       別のGPX
       <input type="file" id="fileInput2" accept=".gpx,application/gpx+xml,text/xml" style="position:absolute;inset:0;opacity:0;">
     </button>
@@ -129,9 +175,6 @@
 </div>
 
 <script>
-// ---- 無料・キー不要の構成 ----
-// 地図ベース: CARTO のラスタタイル（ダーク）
-// 3D地形: AWS Terrarium タイル（標高、キー不要）
 const style = {
   version: 8,
   sources: {
@@ -146,9 +189,7 @@ const style = {
     terrain: {
       type: 'raster-dem',
       tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      encoding: 'terrarium',
-      maxzoom: 14,
+      tileSize: 256, encoding: 'terrarium', maxzoom: 14,
       attribution: 'Terrain: Mapzen / AWS'
     }
   },
@@ -159,17 +200,11 @@ const style = {
 };
 
 const map = new maplibregl.Map({
-  container: 'map',
-  style: style,
-  center: [130.7, 31.5], // 初期: 鹿児島あたり
-  zoom: 8,
-  pitch: 0,
+  container: 'map', style: style,
+  center: [130.7, 31.5], zoom: 8, pitch: 0,
   attributionControl: { compact: true }
 });
-
-map.on('load', () => {
-  map.setTerrain({ source: 'terrain', exaggeration: 1.3 });
-});
+map.on('load', () => { map.setTerrain({ source: 'terrain', exaggeration: 1.3 }); });
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -182,7 +217,6 @@ function toast(msg){
 function parseGPX(text){
   const xml = new DOMParser().parseFromString(text, 'application/xml');
   if (xml.querySelector('parsererror')) throw new Error('GPXの解析に失敗しました');
-  // trkpt 優先、無ければ rtept / wpt
   let pts = [...xml.querySelectorAll('trkpt')];
   if (pts.length === 0) pts = [...xml.querySelectorAll('rtept')];
   if (pts.length === 0) pts = [...xml.querySelectorAll('wpt')];
@@ -193,101 +227,201 @@ function parseGPX(text){
     if (isNaN(lat) || isNaN(lon)) continue;
     const eleEl = p.querySelector('ele');
     const ele = eleEl ? parseFloat(eleEl.textContent) : null;
-    const timeEl = p.querySelector('time');
-    const time = timeEl ? timeEl.textContent : null;
-    coords.push({ lon, lat, ele, time });
+    coords.push({ lon, lat, ele });
   }
   if (coords.length < 2) throw new Error('ルートの点が足りません（2点以上必要）');
   return coords;
 }
 
-// ---- 距離・標高計算 ----
 function haversine(a, b){
   const R = 6371000, toRad = d => d*Math.PI/180;
   const dLat = toRad(b.lat-a.lat), dLon = toRad(b.lon-a.lon);
   const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2;
   return 2*R*Math.asin(Math.sqrt(s));
 }
-function computeStats(coords){
-  let dist = 0, up = 0;
-  for (let i=1;i<coords.length;i++){
-    dist += haversine(coords[i-1], coords[i]);
-    if (coords[i].ele!=null && coords[i-1].ele!=null){
-      const d = coords[i].ele - coords[i-1].ele;
-      if (d > 0) up += d;
-    }
-  }
-  return { distKm: dist/1000, upM: up, n: coords.length };
-}
+
+// ---- 状態 ----
+let LINE = [];           // [[lon,lat],...]
+let ELES = [];           // 標高配列
+let CUM = [];            // 各点までの累積距離(m)
+let TOTAL = 0;           // 総距離(m)
+let currentBounds = null;
+let progress = 0;        // 0..1
+let playing = false;
+let speed = 2;
+let rafId = null;
+let lastTs = null;
 
 // ---- ルート描画 ----
-let currentBounds = null;
-function drawRoute(coords){
-  const line = coords.map(c => [c.lon, c.lat]);
-  const geojson = { type:'Feature', geometry:{ type:'LineString', coordinates: line } };
+function buildRoute(coords){
+  LINE = coords.map(c => [c.lon, c.lat]);
+  ELES = coords.map(c => c.ele);
+  CUM = [0];
+  for (let i=1;i<coords.length;i++){
+    CUM[i] = CUM[i-1] + haversine(coords[i-1], coords[i]);
+  }
+  TOTAL = CUM[CUM.length-1];
 
-  // 既存削除
-  for (const id of ['route-line','route-glow','route-start','route-end']){
+  // 既存レイヤ削除
+  for (const id of ['route-glow','route-bg','route-done','route-start','route-end','bike-glow','bike-dot']){
     if (map.getLayer(id)) map.removeLayer(id);
   }
-  for (const id of ['route','route-ends']){
+  for (const id of ['route','route-done','route-ends','bike']){
     if (map.getSource(id)) map.removeSource(id);
   }
 
-  map.addSource('route', { type:'geojson', data: geojson });
-  // グロー（太く半透明）
+  const full = { type:'Feature', geometry:{ type:'LineString', coordinates: LINE } };
+
+  // 未走行ルート（暗め）
+  map.addSource('route', { type:'geojson', data: full });
   map.addLayer({ id:'route-glow', type:'line', source:'route',
     layout:{'line-cap':'round','line-join':'round'},
-    paint:{'line-color':'#ff6b35','line-width':12,'line-opacity':0.25,'line-blur':6} });
-  // 本線
-  map.addLayer({ id:'route-line', type:'line', source:'route',
+    paint:{'line-color':'#ff6b35','line-width':10,'line-opacity':0.12,'line-blur':6} });
+  map.addLayer({ id:'route-bg', type:'line', source:'route',
     layout:{'line-cap':'round','line-join':'round'},
-    paint:{'line-color':'#ffb84d','line-width':4} });
+    paint:{'line-color':'#6b7785','line-width':3,'line-opacity':0.55} });
 
-  // 始点・終点マーカー
+  // 走行済みルート（明るく光る）
+  map.addSource('route-done', { type:'geojson', data: { type:'Feature', geometry:{ type:'LineString', coordinates: [LINE[0]] } } });
+  map.addLayer({ id:'route-done', type:'line', source:'route-done',
+    layout:{'line-cap':'round','line-join':'round'},
+    paint:{'line-color':'#ffb84d','line-width':5} });
+
+  // 始点・終点
   const ends = { type:'FeatureCollection', features:[
-    { type:'Feature', properties:{kind:'start'}, geometry:{type:'Point', coordinates: line[0]} },
-    { type:'Feature', properties:{kind:'end'}, geometry:{type:'Point', coordinates: line[line.length-1]} }
+    { type:'Feature', properties:{kind:'start'}, geometry:{type:'Point', coordinates: LINE[0]} },
+    { type:'Feature', properties:{kind:'end'}, geometry:{type:'Point', coordinates: LINE[LINE.length-1]} }
   ]};
   map.addSource('route-ends', { type:'geojson', data: ends });
   map.addLayer({ id:'route-start', type:'circle', source:'route-ends',
     filter:['==','kind','start'],
-    paint:{'circle-radius':7,'circle-color':'#2ecc71','circle-stroke-width':2,'circle-stroke-color':'#fff'} });
+    paint:{'circle-radius':6,'circle-color':'#2ecc71','circle-stroke-width':2,'circle-stroke-color':'#fff'} });
   map.addLayer({ id:'route-end', type:'circle', source:'route-ends',
     filter:['==','kind','end'],
-    paint:{'circle-radius':7,'circle-color':'#e74c3c','circle-stroke-width':2,'circle-stroke-color':'#fff'} });
+    paint:{'circle-radius':6,'circle-color':'#e74c3c','circle-stroke-width':2,'circle-stroke-color':'#fff'} });
 
-  // 範囲計算
+  // 走行マーカー（光る点）
+  map.addSource('bike', { type:'geojson', data:{ type:'Feature', geometry:{ type:'Point', coordinates: LINE[0] } } });
+  map.addLayer({ id:'bike-glow', type:'circle', source:'bike',
+    paint:{'circle-radius':16,'circle-color':'#ff6b35','circle-opacity':0.25,'circle-blur':1} });
+  map.addLayer({ id:'bike-dot', type:'circle', source:'bike',
+    paint:{'circle-radius':8,'circle-color':'#ffffff','circle-stroke-width':3,'circle-stroke-color':'#ff6b35'} });
+
+  // 範囲
   const b = new maplibregl.LngLatBounds();
-  for (const p of line) b.extend(p);
+  for (const p of LINE) b.extend(p);
   currentBounds = b;
+
+  progress = 0;
+  document.getElementById('totDist').textContent = '/ ' + (TOTAL/1000).toFixed(1) + ' km';
+  updateScene();
   fitRoute();
 }
 
 function fitRoute(){
   if (!currentBounds) return;
-  map.fitBounds(currentBounds, { padding: 60, pitch: 55, duration: 1400 });
+  map.fitBounds(currentBounds, { padding: 70, pitch: 50, duration: 1200 });
 }
+
+// 距離(0..TOTAL)から、その地点の補間座標と標高とセグメントindexを返す
+function sampleAt(distM){
+  if (distM <= 0) return { pos: LINE[0], ele: ELES[0], idx: 0 };
+  if (distM >= TOTAL) return { pos: LINE[LINE.length-1], ele: ELES[ELES.length-1], idx: LINE.length-1 };
+  // 二分探索
+  let lo=0, hi=CUM.length-1;
+  while (lo < hi){
+    const mid = (lo+hi)>>1;
+    if (CUM[mid] < distM) lo = mid+1; else hi = mid;
+  }
+  const i = Math.max(1, lo);
+  const segLen = CUM[i] - CUM[i-1];
+  const t = segLen > 0 ? (distM - CUM[i-1]) / segLen : 0;
+  const lon = LINE[i-1][0] + (LINE[i][0]-LINE[i-1][0])*t;
+  const lat = LINE[i-1][1] + (LINE[i][1]-LINE[i-1][1])*t;
+  let ele = null;
+  if (ELES[i-1]!=null && ELES[i]!=null) ele = ELES[i-1] + (ELES[i]-ELES[i-1])*t;
+  return { pos:[lon,lat], ele, idx: i };
+}
+
+// 現在のprogressに基づいて全要素を更新
+function updateScene(){
+  const distM = progress * TOTAL;
+  const s = sampleAt(distM);
+
+  // 走行済みライン: 0..idx の座標 + 現在地
+  const doneCoords = LINE.slice(0, s.idx).concat([s.pos]);
+  if (map.getSource('route-done')){
+    map.getSource('route-done').setData({ type:'Feature', geometry:{ type:'LineString', coordinates: doneCoords.length>=2 ? doneCoords : [LINE[0], LINE[0]] } });
+  }
+  // マーカー
+  if (map.getSource('bike')){
+    map.getSource('bike').setData({ type:'Feature', geometry:{ type:'Point', coordinates: s.pos } });
+  }
+  // 数値
+  document.getElementById('curDist').textContent = (distM/1000).toFixed(1) + ' km';
+  document.getElementById('statEle').textContent = s.ele!=null ? Math.round(s.ele) : '–';
+  document.getElementById('progressFill').style.width = (progress*100) + '%';
+}
+
+// ---- 再生ループ ----
+function tick(ts){
+  if (!playing) return;
+  if (lastTs == null) lastTs = ts;
+  const dt = (ts - lastTs)/1000; // 秒
+  lastTs = ts;
+
+  // 速度: 基準で全体を約40秒で走破。speed倍する。
+  const baseDuration = 40;
+  progress += (dt / baseDuration) * speed;
+  if (progress >= 1){ progress = 1; updateScene(); stopPlay(); toast('ゴール！'); return; }
+
+  updateScene();
+  rafId = requestAnimationFrame(tick);
+}
+
+function startPlay(){
+  if (TOTAL <= 0) return;
+  if (progress >= 1) progress = 0; // 終わってたら頭から
+  playing = true; lastTs = null;
+  document.getElementById('btnPlay').textContent = '⏸';
+  rafId = requestAnimationFrame(tick);
+}
+function stopPlay(){
+  playing = false;
+  if (rafId) cancelAnimationFrame(rafId);
+  document.getElementById('btnPlay').textContent = '▶';
+}
+function togglePlay(){ playing ? stopPlay() : startPlay(); }
 
 // ---- ファイル読み込み ----
 function handleFile(file){
   if (!file) return;
+  stopPlay();
   const reader = new FileReader();
   reader.onload = e => {
     try{
       const coords = parseGPX(e.target.result);
-      const stats = computeStats(coords);
-      document.getElementById('statDist').textContent = stats.distKm.toFixed(1);
-      document.getElementById('statUp').textContent = Math.round(stats.upM);
-      document.getElementById('statPts').textContent = stats.n;
-      window._coords = coords; // 後のPhaseで使う
-
-      const draw = () => drawRoute(coords);
-      if (map.isStyleLoaded()) draw(); else map.once('idle', draw);
+      // stats
+      let up = 0;
+      for (let i=1;i<coords.length;i++){
+        if (coords[i].ele!=null && coords[i-1].ele!=null){
+          const d = coords[i].ele - coords[i-1].ele;
+          if (d>0) up += d;
+        }
+      }
+      window._coords = coords;
+      const build = () => {
+        buildRoute(coords);
+        let total = 0;
+        for (let i=1;i<coords.length;i++) total += haversine(coords[i-1],coords[i]);
+        document.getElementById('statDist').textContent = (total/1000).toFixed(1);
+        document.getElementById('statUp').textContent = Math.round(up);
+      };
+      if (map.isStyleLoaded()) build(); else map.once('idle', build);
 
       document.getElementById('loader').style.display = 'none';
       document.getElementById('controls').classList.add('show');
-      toast(`読み込み完了：${stats.n}点 / ${stats.distKm.toFixed(1)}km`);
+      toast(`読み込み完了：${coords.length}点`);
     }catch(err){
       toast('⚠ ' + err.message);
       console.error(err);
@@ -297,9 +431,31 @@ function handleFile(file){
   reader.readAsText(file);
 }
 
+// ---- イベント ----
 document.getElementById('fileInput').addEventListener('change', e => handleFile(e.target.files[0]));
 document.getElementById('fileInput2').addEventListener('change', e => handleFile(e.target.files[0]));
 document.getElementById('btnFit').addEventListener('click', fitRoute);
+document.getElementById('btnPlay').addEventListener('click', togglePlay);
+document.getElementById('btnReset').addEventListener('click', () => {
+  stopPlay(); progress = 0; updateScene();
+});
+
+// 速度ボタン
+document.querySelectorAll('.smallbtn[data-speed]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    speed = parseFloat(btn.dataset.speed);
+    document.querySelectorAll('.smallbtn[data-speed]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+
+// 進捗バーをタップでシーク
+document.getElementById('progressBar').addEventListener('click', (e) => {
+  const rect = e.currentTarget.getBoundingClientRect();
+  const r = (e.clientX - rect.left) / rect.width;
+  progress = Math.max(0, Math.min(1, r));
+  updateScene();
+});
 </script>
 </body>
 </html>
