@@ -102,6 +102,16 @@
   .smallbtn:active{transform:scale(.97);}
   .smallbtn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1207;border:none;}
 
+  /* カメラ切替 */
+  .camrow{display:flex;gap:8px;align-items:center;margin-bottom:10px;}
+  .camlabel{font-size:12px;color:var(--muted);font-weight:700;flex:none;}
+  .cambtn{
+    flex:1;background:var(--panel);border:1px solid var(--line);color:var(--text);
+    border-radius:10px;padding:10px 6px;font-size:12px;font-weight:700;cursor:pointer;
+  }
+  .cambtn:active{transform:scale(.97);}
+  .cambtn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#1a1207;border:none;}
+
   .btnrow{display:flex;gap:10px;}
   .ctrlbtn{
     flex:1;background:var(--panel);border:1px solid var(--line);color:var(--text);
@@ -126,7 +136,7 @@
 
 <div class="topbar">
   <div class="title"><span class="dot"></span>ルートフライオーバー</div>
-  <div class="phase">Phase 2</div>
+  <div class="phase">Phase 3</div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -162,6 +172,13 @@
     <button class="smallbtn active" data-speed="2">2×</button>
     <button class="smallbtn" data-speed="4">4×</button>
     <button class="smallbtn" data-speed="8">8×</button>
+  </div>
+
+  <div class="camrow">
+    <span class="camlabel">📷 カメラ</span>
+    <button class="cambtn" data-cam="off">全体</button>
+    <button class="cambtn active" data-cam="follow">俯瞰追従</button>
+    <button class="cambtn" data-cam="chase">追走</button>
   </div>
 
   <div class="btnrow">
@@ -251,6 +268,7 @@ let playing = false;
 let speed = 2;
 let rafId = null;
 let lastTs = null;
+let camMode = 'follow';  // 'off' | 'follow' | 'chase'
 
 // ---- ルート描画 ----
 function buildRoute(coords){
@@ -343,6 +361,60 @@ function sampleAt(distM){
   return { pos:[lon,lat], ele, idx: i };
 }
 
+// 2点間の方位角（度, 北=0, 東=90）
+function bearing(a, b){
+  const toRad = d => d*Math.PI/180, toDeg = r => r*180/Math.PI;
+  const dLon = toRad(b[0]-a[0]);
+  const y = Math.sin(dLon)*Math.cos(toRad(b[1]));
+  const x = Math.cos(toRad(a[1]))*Math.sin(toRad(b[1])) - Math.sin(toRad(a[1]))*Math.cos(toRad(b[1]))*Math.cos(dLon);
+  return (toDeg(Math.atan2(y,x)) + 360) % 360;
+}
+
+// 角度を最短方向で補間（-180..180をまたぐ処理）
+function lerpAngle(from, to, t){
+  let diff = ((to - from + 540) % 360) - 180;
+  return from + diff * t;
+}
+
+let camBearing = 0;      // 現在のカメラ方位（滑らかに追従）
+let camInit = false;
+
+// 現在地周辺の進行方向を、少し先読みして安定させる
+function travelBearing(distM){
+  const ahead = Math.min(TOTAL, distM + Math.max(80, TOTAL*0.01));
+  const a = sampleAt(distM).pos;
+  const b = sampleAt(ahead).pos;
+  return bearing(a, b);
+}
+
+// カメラをマーカーに追従させる
+function updateCamera(s, distM, animate){
+  if (camMode === 'off') return;
+
+  const targetBearing = travelBearing(distM);
+  if (!camInit){ camBearing = targetBearing; camInit = true; }
+  // 滑らかに方位を寄せる
+  camBearing = lerpAngle(camBearing, targetBearing, 0.08);
+
+  if (camMode === 'chase'){
+    // 追走：マーカーの後ろ上空から見る。低めピッチで迫力。
+    map.jumpTo({
+      center: s.pos,
+      zoom: 14.2,
+      pitch: 68,
+      bearing: camBearing
+    });
+  } else if (camMode === 'follow'){
+    // 俯瞰追従：高めから見下ろし、ゆるく進行方向へ向く
+    map.jumpTo({
+      center: s.pos,
+      zoom: 12.2,
+      pitch: 45,
+      bearing: camBearing
+    });
+  }
+}
+
 // 現在のprogressに基づいて全要素を更新
 function updateScene(){
   const distM = progress * TOTAL;
@@ -361,6 +433,9 @@ function updateScene(){
   document.getElementById('curDist').textContent = (distM/1000).toFixed(1) + ' km';
   document.getElementById('statEle').textContent = s.ele!=null ? Math.round(s.ele) : '–';
   document.getElementById('progressFill').style.width = (progress*100) + '%';
+
+  // カメラ追従
+  updateCamera(s, distM);
 }
 
 // ---- 再生ループ ----
@@ -384,7 +459,24 @@ function startPlay(){
   if (progress >= 1) progress = 0; // 終わってたら頭から
   playing = true; lastTs = null;
   document.getElementById('btnPlay').textContent = '⏸';
-  rafId = requestAnimationFrame(tick);
+
+  // 追従系なら、走り出す前にカメラを現在地へ寄せる
+  if (camMode !== 'off'){
+    const s = sampleAt(progress * TOTAL);
+    camInit = false;
+    const targetBearing = travelBearing(progress * TOTAL);
+    camBearing = targetBearing;
+    map.easeTo({
+      center: s.pos,
+      zoom: camMode === 'chase' ? 14.2 : 12.2,
+      pitch: camMode === 'chase' ? 68 : 45,
+      bearing: targetBearing,
+      duration: 1400
+    });
+    setTimeout(() => { if (playing){ lastTs = null; rafId = requestAnimationFrame(tick); } }, 1400);
+  } else {
+    rafId = requestAnimationFrame(tick);
+  }
 }
 function stopPlay(){
   playing = false;
@@ -446,6 +538,32 @@ document.querySelectorAll('.smallbtn[data-speed]').forEach(btn => {
     speed = parseFloat(btn.dataset.speed);
     document.querySelectorAll('.smallbtn[data-speed]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
+  });
+});
+
+// カメラモードボタン
+document.querySelectorAll('.cambtn[data-cam]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    camMode = btn.dataset.cam;
+    document.querySelectorAll('.cambtn[data-cam]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    camInit = false;
+    if (camMode === 'off'){
+      // 全体表示に戻す
+      fitRoute();
+    } else {
+      // 即座に現在地へ寄せる
+      const s = sampleAt(progress * TOTAL);
+      const tb = travelBearing(progress * TOTAL);
+      camBearing = tb;
+      map.easeTo({
+        center: s.pos,
+        zoom: camMode === 'chase' ? 14.2 : 12.2,
+        pitch: camMode === 'chase' ? 68 : 45,
+        bearing: tb,
+        duration: 1000
+      });
+    }
   });
 });
 
