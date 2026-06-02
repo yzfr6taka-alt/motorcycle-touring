@@ -2,7 +2,7 @@
 
 ## What this project is
 
-A single-page web app that visualises a motorcycle touring GPX track as an animated 3D map flyover. The user loads a `.gpx` file exported from a GPS logger (e.g. Geo Tracker), and the app plays back the route on a dark 3D map with a moving marker, camera tracking, and elevation stats.
+A single-page web app that visualises a motorcycle touring GPX track as an animated 3D map flyover. The user loads a `.gpx` file exported from a GPS logger (e.g. Geo Tracker), and the app plays back the route on a satellite 3D map with a moving marker, camera tracking, elevation stats, and an optional cinema mode for screen recording.
 
 No backend, no build step, no framework.
 
@@ -12,7 +12,7 @@ No backend, no build step, no framework.
 
 ```
 motorcycle-touring/
-├── flyover.html    # Entire application (HTML + CSS + JS, ~580 lines)
+├── flyover.html    # Entire application (HTML + CSS + JS, ~700 lines)
 └── README.md       # Minimal project description
 ```
 
@@ -52,9 +52,15 @@ Only MapLibre GL JS v4.7.1. No other external libraries.
 | `TOTAL` | `number` | Total route distance (metres) |
 | `progress` | `0..1` | Playback position |
 | `playing` | `boolean` | Whether animation loop is running |
-| `speed` | `1\|2\|4\|8` | Playback multiplier (default 2×) |
 | `camMode` | `'off'\|'follow'\|'chase'` | Camera tracking mode |
-| `camBearing` | `number` | Current smoothed camera bearing (degrees) |
+| `camLon` | `number` | Smoothed camera center longitude (interpolated each frame) |
+| `camLat` | `number` | Smoothed camera center latitude (interpolated each frame) |
+| `camBearing` | `number` | Smoothed camera bearing (degrees, interpolated each frame) |
+| `camInit` | `boolean` | Whether camLon/camLat/camBearing have been initialised for current session |
+| `cinemaMode` | `boolean` | Whether cinema mode (UI hidden) is active |
+| `cinemaTapTimer` | timer ID | Auto-hide timer for cinema peek mode |
+| `elevPts` | `number[]` | 160-point normalised elevation profile (cached in `buildRoute`) |
+| `elevMeta` | `{minE, maxE}` | Elevation range for `elevPts` |
 
 ### Key functions
 
@@ -62,17 +68,22 @@ Only MapLibre GL JS v4.7.1. No other external libraries.
 |---|---|
 | `parseGPX(text)` | DOMParser-based GPX parser; reads `trkpt`, `rtept`, or `wpt` elements |
 | `haversine(a, b)` | Great-circle distance in metres between two `{lat, lon}` points |
-| `buildRoute(coords)` | Adds/replaces all MapLibre layers and sources; resets playback |
+| `buildRoute(coords)` | Adds/replaces all MapLibre layers and sources; caches `elevPts`; resets playback |
 | `sampleAt(distM)` | Binary search + linear interpolation → `{pos, ele, idx}` at a given distance |
 | `bearing(a, b)` | Compass bearing (degrees, N=0) between two `[lon,lat]` points |
 | `lerpAngle(from, to, t)` | Shortest-path angular interpolation (handles the 0°/360° wrap) |
 | `travelBearing(distM)` | Reads 80 m (or 1% of route) ahead to get stable heading |
-| `updateCamera(s, distM)` | Applies camera position based on `camMode` |
-| `updateScene()` | Main render: updates done-line, bike marker, stats UI, camera |
-| `tick(ts)` | `requestAnimationFrame` loop; advances `progress` by `dt/40 * speed` |
+| `updateCamera(s, distM)` | Lerps `camLon/camLat` (α=0.08) and `camBearing` (α=0.06) toward target, then `jumpTo` |
+| `updateScene()` | Main render: updates done-line, bike marker, stats UI, camera, cinema overlay |
+| `tick(ts)` | `requestAnimationFrame` loop; advances `progress` by `dt / BASE_DURATION`; `dt` capped at 100 ms |
 | `startPlay()` | Starts animation; eases camera to current position first if tracking |
 | `stopPlay()` | Cancels RAF loop |
+| `togglePlay()` | Toggles play/pause |
 | `handleFile(file)` | FileReader → parseGPX → buildRoute; computes elevation gain |
+| `drawElevGraph()` | Draws 160-pt elevation profile + progress cursor on `#elevCanvas` (canvas 2D) |
+| `updateCinemaStats()` | Updates `#cinemaEle` and `#cinemaDist` badges in cinema overlay |
+| `setCinemaUI(mode)` | Transitions cinema state: `'on'` hides UI, `'off'` restores, `'peek'` shows for 3 s |
+| `toggleCinema()` | Called by `#btnCinema`; toggles between on/off |
 
 ### MapLibre sources and layers
 
@@ -105,11 +116,23 @@ Only MapLibre GL JS v4.7.1. No other external libraries.
 | `follow` (俯瞰追従) | 12.2 | 45° | Overhead follow with gentle heading |
 | `chase` (追走) | 14.2 | 68° | Low rear-chase view, more immersive |
 
-Camera bearing is smoothed each frame: `camBearing = lerpAngle(camBearing, targetBearing, 0.08)`.
+Camera center and bearing are smoothed each frame toward the target using per-frame lerp:
+- Center: `camLon += (target - camLon) * 0.08` (≈200 ms lag at 60 fps — lets satellite tiles pre-load)
+- Bearing: `camBearing = lerpAngle(camBearing, targetBearing, 0.06)` (slightly slower for cinematic feel)
+- On first frame, mode-switch, or reset: values snap to target immediately (`camInit = false` triggers this)
 
 ### Playback timing
 
-Base duration is **40 seconds** for the full route at 1× speed. At 2× the route completes in ~20 s, at 8× in ~5 s. `speed` is a direct multiplier on `progress` advance per second.
+`BASE_DURATION = 100` seconds for the full route at fixed pace (no speed selector). `progress` advances by `dt / BASE_DURATION` per frame. `dt` is capped at 100 ms (`Math.min(dt, 0.1)`) to prevent large jumps when the tab was backgrounded.
+
+### Cinema mode
+
+`🎬 シネマ` button (4th in the button row) toggles cinema mode for clean screen recording:
+
+- **ON**: `#topbar` and `#controls` fade to `opacity:0; pointer-events:none` (0.45 s CSS transition). `#cinema-overlay` appears at top-left: a 160×54 canvas elevation profile + distance and current-elevation badges.
+- **OFF**: UI fades back in; overlay hidden.
+- **Peek**: Tapping the map while cinema is ON restores UI for 3 seconds, then re-hides.
+- The elevation profile (`elevPts`) is pre-computed at 160 normalised points in `buildRoute()` so `drawElevGraph()` is cheap per frame (canvas clear + fill + line + cursor line only).
 
 ### Progress bar seek
 
@@ -144,8 +167,10 @@ For GPX test files, export a track from Geo Tracker, OsmAnd, or any standard GPS
 
 ## What to watch out for
 
+- **Esri tile URL order**: Esri uses `{z}/{y}/{x}` (not `{z}/{x}/{y}`). Do not swap these — the tiles will silently return wrong images.
 - **Terrain tiles attribution**: The Mapzen/AWS terrarium tiles are used for elevation data. They are free for reasonable use but the attribution (`Terrain: Mapzen / AWS`) must be kept.
-- **CARTO tiles**: Dark Matter tiles are free for non-commercial use under CARTO's terms. Attribution `© OpenStreetMap © CARTO` is required and already present.
 - **iOS safe area**: The controls panel uses `env(safe-area-inset-bottom)` for bottom padding to avoid the iPhone home indicator. Keep this when modifying the controls layout.
-- **No GPX elevation**: If GPX points lack `<ele>` elements, `ELES` entries are `null` and the elevation stat displays `–`. Division-by-null is guarded throughout.
+- **No GPX elevation**: If GPX points lack `<ele>` elements, `ELES` entries are `null` and the elevation stat displays `–`. In cinema mode, `elevPts` stores `0` for null elevations and `drawElevGraph` handles flat range with `|| 1` guard.
 - **Smooth bearing across 0°/360°**: `lerpAngle` handles the wrap-around. If you replace it, make sure the new implementation does the same.
+- **`camInit` flag**: Must be set to `false` whenever the route is reset or camera mode is switched, so the lerp variables snap to the new position immediately rather than drifting from the old one.
+- **Cinema mode pointer-events**: When cinema is ON, `controls.style.pointerEvents = 'none'` lets map-click events through to trigger peek. When OFF, resetting to `''` restores the default (auto).
