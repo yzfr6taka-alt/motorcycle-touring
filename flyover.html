@@ -116,6 +116,39 @@
   }
   .toast.show{opacity:1;}
   .maplibregl-ctrl-attrib{font-size:9px;}
+
+  /* 左上 標高プロファイル */
+  .eleprofile{
+    position:absolute;top:52px;left:12px;z-index:9;
+    display:none;align-items:center;gap:8px;pointer-events:none;
+  }
+  .eleprofile.show{display:flex;}
+  .elelogo{
+    width:34px;height:34px;flex:none;border-radius:9px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#1a1207;font-weight:900;font-size:20px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 3px 10px rgba(0,0,0,.5);font-family:Georgia,serif;
+  }
+  #eleCanvas{display:block;filter:drop-shadow(0 2px 6px rgba(0,0,0,.7));}
+
+  /* 速度バッジ（左下） */
+  .spdbadge{
+    position:absolute;left:12px;z-index:9;bottom:calc(50% - 0px);
+    display:none;align-items:center;gap:8px;pointer-events:none;
+  }
+  /* 速度バッジは再生中だけ出すのでJSでtop制御。ここでは非表示デフォルト */
+  .speedwrap{
+    display:flex;align-items:center;gap:0;
+    background:var(--accent2);border-radius:22px;
+    box-shadow:0 4px 12px rgba(0,0,0,.5);overflow:hidden;
+  }
+  .speedwrap .ico{
+    width:40px;height:40px;flex:none;background:#fff;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;font-size:20px;
+    margin:3px;
+  }
+  .speedwrap .val{font-weight:900;font-size:19px;color:#1a1207;padding:0 16px 0 6px;letter-spacing:.02em;}
 </style>
 </head>
 <body>
@@ -126,9 +159,20 @@
   <div class="phase">衛星版</div>
 </div>
 
+<!-- 左上 標高プロファイル常駐 -->
+<div class="eleprofile" id="eleProfile">
+  <div class="elelogo">R</div>
+  <canvas id="eleCanvas" width="300" height="64"></canvas>
+</div>
+
 <div class="cinematic" id="cinematic">
   <div class="ct" id="cineTitle">ツーリング</div>
   <div class="cs" id="cineSub"></div>
+</div>
+
+<!-- 速度バッジ -->
+<div class="spdbadge" id="spdBadge" style="bottom:200px;">
+  <div class="speedwrap"><div class="ico">🚀</div><div class="val" id="spdVal">0 km/h</div></div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -290,7 +334,7 @@ function buildRoute(coords){
     }
   }
 
-  for (const id of ['route-glow','route-bg','route-done-glow','route-done','route-start','route-end','head-glow','head-dot']){
+  for (const id of ['route-glow','route-bg','route-done-edge','route-done','route-start','route-end','head-glow','head-dot']){
     if (map.getLayer(id)) map.removeLayer(id);
   }
   for (const id of ['route','route-done','route-ends','head']){
@@ -299,19 +343,19 @@ function buildRoute(coords){
 
   const full = { type:'Feature', geometry:{ type:'LineString', coordinates: LINE } };
   map.addSource('route', { type:'geojson', data: full });
-  // 未走行は控えめ
+  // 未走行は控えめな白点線
   map.addLayer({ id:'route-bg', type:'line', source:'route',
     layout:{'line-cap':'round','line-join':'round'},
-    paint:{'line-color':'#ffffff','line-width':2,'line-opacity':0.35,'line-dasharray':[2,2]} });
+    paint:{'line-color':'#ffffff','line-width':2,'line-opacity':0.30,'line-dasharray':[2,2]} });
 
-  // 走行済み（先端が伸びる本体）
+  // 走行済み（Relive風：くっきりした黄色一色＋うっすら縁取り）
   map.addSource('route-done', { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates:[LINE[0]] } } });
-  map.addLayer({ id:'route-done-glow', type:'line', source:'route-done',
+  map.addLayer({ id:'route-done-edge', type:'line', source:'route-done',
     layout:{'line-cap':'round','line-join':'round'},
-    paint:{'line-color':'#ff6b35','line-width':12,'line-opacity':0.4,'line-blur':6} });
+    paint:{'line-color':'#8a6d00','line-width':7,'line-opacity':0.6} });
   map.addLayer({ id:'route-done', type:'line', source:'route-done',
     layout:{'line-cap':'round','line-join':'round'},
-    paint:{'line-color':'#ffd24d','line-width':5} });
+    paint:{'line-color':'#ffd400','line-width':4} });
 
   // 始点・終点
   const ends = { type:'FeatureCollection', features:[
@@ -337,6 +381,7 @@ function buildRoute(coords){
 
   progress = 0;
   document.getElementById('totDist').textContent = '/ '+(TOTAL/1000).toFixed(1)+' km';
+  setupEleProfile();
   updateScene();
   fitRoute();
 }
@@ -344,6 +389,59 @@ function buildRoute(coords){
 function fitRoute(){
   if (!currentBounds) return;
   map.fitBounds(currentBounds, { padding: 70, pitch: 50, duration: 1200 });
+}
+
+// ===== 標高プロファイル描画 =====
+let ELE_MIN=0, ELE_MAX=1;
+function setupEleProfile(){
+  const vals = ELES.filter(e=>e!=null);
+  if (vals.length>=2){
+    ELE_MIN = Math.min(...vals);
+    ELE_MAX = Math.max(...vals);
+    if (ELE_MAX-ELE_MIN < 1) ELE_MAX = ELE_MIN+1;
+    document.getElementById('eleProfile').classList.add('show');
+  } else {
+    document.getElementById('eleProfile').classList.remove('show');
+  }
+}
+function drawEleProfile(prog){
+  const cv = document.getElementById('eleCanvas');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0,0,W,H);
+  const n = ELES.length;
+  if (n<2 || TOTAL<=0) return;
+  // 距離ベースのx位置で標高を多角形に
+  const xOf = i => (CUM[i]/TOTAL)*W;
+  const yOf = e => {
+    if (e==null) e = ELE_MIN;
+    return H - 4 - ((e-ELE_MIN)/(ELE_MAX-ELE_MIN))*(H-8);
+  };
+  // ベース（未走行：半透明白）
+  ctx.beginPath();
+  ctx.moveTo(0,H);
+  for (let i=0;i<n;i++) ctx.lineTo(xOf(i), yOf(ELES[i]));
+  ctx.lineTo(W,H); ctx.closePath();
+  ctx.fillStyle='rgba(255,255,255,0.28)';
+  ctx.fill();
+  // 走行済み（白く塗る）：prog位置まで
+  const cutX = prog*W;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0,0,cutX,H);
+  ctx.clip();
+  ctx.beginPath();
+  ctx.moveTo(0,H);
+  for (let i=0;i<n;i++) ctx.lineTo(xOf(i), yOf(ELES[i]));
+  ctx.lineTo(W,H); ctx.closePath();
+  ctx.fillStyle='rgba(255,255,255,0.92)';
+  ctx.fill();
+  ctx.restore();
+  // 現在位置の縦線
+  ctx.beginPath();
+  ctx.moveTo(cutX,0); ctx.lineTo(cutX,H);
+  ctx.strokeStyle='#ffd400'; ctx.lineWidth=2; ctx.stroke();
 }
 
 function sampleAt(distM){
@@ -380,9 +478,9 @@ function updateCamera(s, distM){
   if (!camInit){ camBearing=tb; camInit=true; }
   camBearing=lerpAngle(camBearing, tb, 0.10);
   if (camMode==='chase'){
-    map.jumpTo({ center:s.pos, zoom:15.0, pitch:75, bearing:camBearing });
+    map.jumpTo({ center:s.pos, zoom:14.4, pitch:64, bearing:camBearing });
   } else {
-    map.jumpTo({ center:s.pos, zoom:12.8, pitch:55, bearing:camBearing });
+    map.jumpTo({ center:s.pos, zoom:12.6, pitch:56, bearing:camBearing });
   }
 }
 
@@ -400,6 +498,19 @@ function updateScene(){
   document.getElementById('statEle').textContent=s.ele!=null?Math.round(s.ele):'–';
   document.getElementById('statSpd').textContent=s.spd!=null?Math.round(s.spd):'–';
   document.getElementById('progressFill').style.width=(progress*100)+'%';
+
+  // 速度バッジ
+  const badge=document.getElementById('spdBadge');
+  if (playing && s.spd!=null){
+    document.getElementById('spdVal').textContent=Math.round(s.spd)+' km/h';
+    badge.style.display='flex';
+  } else {
+    badge.style.display='none';
+  }
+
+  // 標高グラフ
+  drawEleProfile(progress);
+
   updateCamera(s, distM);
 }
 
@@ -442,7 +553,7 @@ function startPlay(){
     const s=sampleAt(progress*TOTAL);
     camInit=false;
     const tb=travelBearing(progress*TOTAL); camBearing=tb;
-    map.easeTo({ center:s.pos, zoom:camMode==='chase'?15.0:12.8, pitch:camMode==='chase'?75:55, bearing:tb, duration:1500 });
+    map.easeTo({ center:s.pos, zoom:camMode==='chase'?14.4:12.6, pitch:camMode==='chase'?64:56, bearing:tb, duration:1500 });
     setTimeout(()=>{ if(playing){ lastTs=null; rafId=requestAnimationFrame(tick); } }, 1500);
   } else {
     rafId=requestAnimationFrame(tick);
@@ -507,7 +618,7 @@ document.querySelectorAll('.cambtn[data-cam]').forEach(btn=>{
     else{
       const s=sampleAt(progress*TOTAL);
       const tb=travelBearing(progress*TOTAL); camBearing=tb;
-      map.easeTo({ center:s.pos, zoom:camMode==='chase'?15.0:12.8, pitch:camMode==='chase'?75:55, bearing:tb, duration:1000 });
+      map.easeTo({ center:s.pos, zoom:camMode==='chase'?14.4:12.6, pitch:camMode==='chase'?64:56, bearing:tb, duration:1000 });
     }
   });
 });
