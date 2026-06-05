@@ -296,6 +296,18 @@ function buildRoute(coords){
   }
   TOTAL = CUM[CUM.length-1];
 
+  // 等距離リサンプル（800点）—— Catmull-Rom スプラインの土台
+  // 元のGPS点が不均等間隔でも等速で動けるよう、arc-length空間で均等配置
+  {
+    const N = 800;
+    RS_LINE = []; RS_ELES = [];
+    for (let i = 0; i < N; i++){
+      const rp = sampleAt((i / (N - 1)) * TOTAL);
+      RS_LINE.push([rp.pos[0], rp.pos[1]]);
+      RS_ELES.push(rp.ele);
+    }
+  }
+
   // シネマ用：標高プロファイルを160点に正規化してキャッシュ
   const EP_N = 160;
   elevPts = [];
@@ -316,7 +328,8 @@ function buildRoute(coords){
     if (map.getSource(id)) map.removeSource(id);
   }
 
-  const full = { type:'Feature', geometry:{ type:'LineString', coordinates: LINE } };
+  // スプライン補間済みの均等点でルートを描画（よりスムーズな曲線表示）
+  const full = { type:'Feature', geometry:{ type:'LineString', coordinates: RS_LINE.length>=2 ? RS_LINE : LINE } };
 
   // 未走行ルート（暗め）
   map.addSource('route', { type:'geojson', data: full });
@@ -328,7 +341,8 @@ function buildRoute(coords){
     paint:{'line-color':'#6b7785','line-width':3,'line-opacity':0.55} });
 
   // 走行済みルート（明るく光る）
-  map.addSource('route-done', { type:'geojson', data: { type:'Feature', geometry:{ type:'LineString', coordinates: [LINE[0]] } } });
+  const startPt = RS_LINE.length>=2 ? RS_LINE[0] : LINE[0];
+  map.addSource('route-done', { type:'geojson', data: { type:'Feature', geometry:{ type:'LineString', coordinates: [startPt, startPt] } } });
   map.addLayer({ id:'route-done', type:'line', source:'route-done',
     layout:{'line-cap':'round','line-join':'round'},
     paint:{'line-color':'#ffb84d','line-width':5} });
@@ -404,10 +418,58 @@ function lerpAngle(from, to, t){
   return from + diff * t;
 }
 
+// Catmull-Rom スプライン（一様パラメータ）で pts[frac*(n-1)] の補間座標を返す
+// エンドポイントはクランプ（先端・末端の接線を平坦化）
+function catmullRomPt(pts, frac){
+  const n = pts.length;
+  if (n < 2) return (pts[0] || [0,0]);
+  const f  = Math.max(0, Math.min(1, frac)) * (n - 1);
+  const i1 = Math.min(Math.floor(f), n - 2);
+  const t  = f - i1;
+  const p0 = pts[Math.max(0, i1 - 1)];
+  const p1 = pts[i1];
+  const p2 = pts[Math.min(n - 1, i1 + 1)];
+  const p3 = pts[Math.min(n - 1, i1 + 2)];
+  const t2 = t*t, t3 = t2*t;
+  return [
+    0.5*((2*p1[0])+(-p0[0]+p2[0])*t+(2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*t2+(-p0[0]+3*p1[0]-3*p2[0]+p3[0])*t3),
+    0.5*((2*p1[1])+(-p0[1]+p2[1])*t+(2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2+(-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3)
+  ];
+}
+
+// スプラインから位置と標高を取得（RS_LINEが空なら線形にフォールバック）
+function sampleSpline(frac){
+  if (RS_LINE.length < 2) return sampleAt(frac * TOTAL);
+  const pos = catmullRomPt(RS_LINE, frac);
+  const n = RS_ELES.length;
+  const f = Math.max(0, Math.min(1, frac)) * (n - 1);
+  const i = Math.min(Math.floor(f), n - 2);
+  const t = f - i;
+  const e1 = RS_ELES[i], e2 = RS_ELES[i + 1];
+  const ele = (e1 != null && e2 != null) ? e1 + (e2 - e1)*t : (e1 != null ? e1 : e2);
+  return { pos, ele };
+}
+
+// スプライン接線方向から bearing を計算（GPS ノイズに依存しない滑らかな方向）
+function splineBearing(frac){
+  // RS_LINE の 2点分先を参照 → 急な方向変化を防ぐ安定した接線
+  const eps = 2.0 / RS_LINE.length;
+  const a = catmullRomPt(RS_LINE, Math.max(0, frac));
+  const b = catmullRomPt(RS_LINE, Math.min(1, frac + eps));
+  // ほぼ同じ点なら現在のベアリングを維持
+  if (Math.abs(a[0]-b[0]) < 1e-9 && Math.abs(a[1]-b[1]) < 1e-9) return camBearing;
+  return bearing(a, b);
+}
+
 // カメラ平滑化用の現在値（毎フレーム目標へ少しずつ寄せる）
 let camLon = 0, camLat = 0;  // 現在のカメラ中心（補間済）
 let camBearing = 0;           // 現在のカメラ方位（補間済）
 let camInit = false;
+let RS_LINE = [];              // 等距離リサンプル点 [[lon,lat], ...]
+let RS_ELES = [];              // リサンプル点の標高
+let camZoom  = 12.2;           // ダンプ追従zoom（毎フレームlerp）
+let camPitch = 45;             // ダンプ追従pitch（毎フレームlerp）
+let playEase = 0;              // ease-in フェーダー 0→1
 
 // 現在地周辺の進行方向を、少し先読みして安定させる
 function travelBearing(distM){
@@ -417,58 +479,60 @@ function travelBearing(distM){
   return bearing(a, b);
 }
 
-// カメラをマーカーに平滑追従させる
-function updateCamera(s, distM){
+// カメラをマーカーにダンプ追従させる（位置・bearing・zoom・pitch すべてlerp）
+function updateCamera(s, frac){
   if (camMode === 'off') return;
 
-  const targetBearing = travelBearing(distM);
+  const tb = RS_LINE.length >= 2 ? splineBearing(frac) : travelBearing(frac * TOTAL);
+  const tz = camMode === 'chase' ? 14.2 : 12.2;
+  const tp = camMode === 'chase' ? 68   : 45;
 
-  // 初回フレームは現在地にスナップして即時同期（jumpToの急変を防ぐ）
+  // 初回フレームは目標値にスナップ（lerp開始前のワープ防止）
   if (!camInit){
     camLon = s.pos[0]; camLat = s.pos[1];
-    camBearing = targetBearing;
+    camBearing = tb; camZoom = tz; camPitch = tp;
     camInit = true;
   }
 
-  // 中心座標を目標（マーカー位置）へ毎フレーム近づける
-  // 係数0.08 ≒ 60fpsで約200msのラグ → 衛星タイルの読込に余裕を与えつつ滑らかに追従
-  camLon += (s.pos[0] - camLon) * 0.08;
-  camLat += (s.pos[1] - camLat) * 0.08;
+  // 位置: α=0.08 ≒ 60fpsで約200msのラグ → 衛星タイルの先読みを確保
+  camLon  += (s.pos[0] - camLon)  * 0.08;
+  camLat  += (s.pos[1] - camLat)  * 0.08;
+  // bearing: 0°/360°またぎを正しく処理しつつ α=0.06 でゆっくり旋回
+  camBearing = lerpAngle(camBearing, tb, 0.06);
+  // zoom/pitch: α=0.05 でなめらかにモード切替に追従
+  camZoom  += (tz - camZoom)  * 0.05;
+  camPitch += (tp - camPitch) * 0.05;
 
-  // 方位を目標方向へ近づける（0.06でやや遅めの旋回 → シネマチックな旋回感）
-  camBearing = lerpAngle(camBearing, targetBearing, 0.06);
-
-  map.jumpTo({
-    center: [camLon, camLat],
-    zoom: camMode === 'chase' ? 14.2 : 12.2,
-    pitch: camMode === 'chase' ? 68 : 45,
-    bearing: camBearing
-  });
+  map.jumpTo({ center:[camLon, camLat], zoom:camZoom, pitch:camPitch, bearing:camBearing });
 }
 
 // 現在のprogressに基づいて全要素を更新
 function updateScene(){
   const distM = progress * TOTAL;
-  const s = sampleAt(distM);
+  // スプラインで補間した位置・標高を使用（RS_LINEが未構築なら線形にフォールバック）
+  const s = RS_LINE.length >= 2 ? sampleSpline(progress) : sampleAt(distM);
 
-  // 走行済みライン: 0..idx の座標 + 現在地
-  const doneCoords = LINE.slice(0, s.idx).concat([s.pos]);
-  if (map.getSource('route-done')){
-    map.getSource('route-done').setData({ type:'Feature', geometry:{ type:'LineString', coordinates: doneCoords.length>=2 ? doneCoords : [LINE[0], LINE[0]] } });
+  // 走行済みライン: RS_LINE の整数インデックス点 + 正確な現在地スプライン点
+  let doneCoords;
+  if (RS_LINE.length >= 2){
+    const iEnd = Math.floor(progress * (RS_LINE.length - 1));
+    doneCoords = RS_LINE.slice(0, iEnd + 1).concat([s.pos]);
+  } else {
+    doneCoords = LINE.slice(0, s.idx).concat([s.pos]);
   }
-  // マーカー
+  if (map.getSource('route-done')){
+    const anchor = RS_LINE.length >= 2 ? RS_LINE[0] : LINE[0];
+    map.getSource('route-done').setData({ type:'Feature', geometry:{ type:'LineString', coordinates: doneCoords.length>=2 ? doneCoords : [anchor,anchor] } });
+  }
   if (map.getSource('bike')){
     map.getSource('bike').setData({ type:'Feature', geometry:{ type:'Point', coordinates: s.pos } });
   }
-  // 数値
   document.getElementById('curDist').textContent = (distM/1000).toFixed(1) + ' km';
   document.getElementById('statEle').textContent = s.ele!=null ? Math.round(s.ele) : '–';
   document.getElementById('progressFill').style.width = (progress*100) + '%';
 
-  // カメラ追従
-  updateCamera(s, distM);
+  updateCamera(s, progress);
 
-  // シネマオーバーレイ更新
   if (cinemaMode){ drawElevGraph(); updateCinemaStats(); }
 }
 
@@ -479,12 +543,15 @@ const BASE_DURATION = 100;
 function tick(ts){
   if (!playing) return;
   if (lastTs == null) lastTs = ts;
-  // タブ非表示からの復帰やフレーム落ちでdtが大きくなる場合をキャップ（最大100ms）
-  // → 大ジャンプを防いで視点がカクッと飛ばないようにする
-  const dt = Math.min((ts - lastTs) / 1000, 0.1);
+  const dt = Math.min((ts - lastTs) / 1000, 0.1); // タブ復帰時の大ジャンプをキャップ
   lastTs = ts;
 
-  progress += dt / BASE_DURATION;
+  // ease-in: 再生開始から1.5秒でフルスピードへ滑らかに立ち上げ
+  playEase = Math.min(1, playEase + dt / 1.5);
+  // ease-out: 末尾5%でスピードを落として滑らかに収束（最低0.1倍速を維持して必ずゴール）
+  const easeOut = Math.max(0.1, Math.min(1, progress > 0.95 ? (1 - progress) / 0.05 : 1));
+
+  progress += (dt / BASE_DURATION) * playEase * easeOut;
   if (progress >= 1){ progress = 1; updateScene(); stopPlay(); toast('ゴール！'); return; }
 
   updateScene();
@@ -495,23 +562,17 @@ function startPlay(){
   if (TOTAL <= 0) return;
   if (progress >= 1) progress = 0;
   playing = true; lastTs = null;
+  playEase = 0; // ease-in をリセット
   document.getElementById('btnPlay').textContent = '⏸';
 
   if (camMode !== 'off'){
-    const s = sampleAt(progress * TOTAL);
-    const targetBearing = travelBearing(progress * TOTAL);
-    // easeTo前にカメラ平滑化の現在値を開始位置に合わせておく
-    // → RAF開始直後の1フレーム目でjumpToが急変しないようにする
+    const s  = RS_LINE.length >= 2 ? sampleSpline(progress) : sampleAt(progress * TOTAL);
+    const tb = RS_LINE.length >= 2 ? splineBearing(progress) : travelBearing(progress * TOTAL);
+    const tz = camMode === 'chase' ? 14.2 : 12.2;
+    const tp = camMode === 'chase' ? 68   : 45;
     camLon = s.pos[0]; camLat = s.pos[1];
-    camBearing = targetBearing;
-    camInit = true;
-    map.easeTo({
-      center: s.pos,
-      zoom: camMode === 'chase' ? 14.2 : 12.2,
-      pitch: camMode === 'chase' ? 68 : 45,
-      bearing: targetBearing,
-      duration: 1400
-    });
+    camBearing = tb; camZoom = tz; camPitch = tp; camInit = true;
+    map.easeTo({ center:s.pos, zoom:tz, pitch:tp, bearing:tb, duration:1400 });
     setTimeout(() => { if (playing){ lastTs = null; rafId = requestAnimationFrame(tick); } }, 1400);
   } else {
     rafId = requestAnimationFrame(tick);
@@ -565,7 +626,7 @@ function drawElevGraph(){
 
 function updateCinemaStats(){
   const distM = progress * TOTAL;
-  const s = sampleAt(distM);
+  const s = RS_LINE.length >= 2 ? sampleSpline(progress) : sampleAt(distM);
   document.getElementById('cinemaEle').textContent = s.ele != null ? '↑ ' + Math.round(s.ele) + 'm' : '↑ –';
   document.getElementById('cinemaDist').textContent = (distM / 1000).toFixed(1) + ' km';
 }
@@ -671,19 +732,13 @@ document.querySelectorAll('.cambtn[data-cam]').forEach(btn => {
       camInit = false;
       fitRoute();
     } else {
-      const s = sampleAt(progress * TOTAL);
-      const tb = travelBearing(progress * TOTAL);
-      // カメラ平滑化の現在値を切替先の位置にリセット（切替時のワープを防ぐ）
+      const s  = RS_LINE.length >= 2 ? sampleSpline(progress) : sampleAt(progress * TOTAL);
+      const tb = RS_LINE.length >= 2 ? splineBearing(progress) : travelBearing(progress * TOTAL);
+      const tz = camMode === 'chase' ? 14.2 : 12.2;
+      const tp = camMode === 'chase' ? 68   : 45;
       camLon = s.pos[0]; camLat = s.pos[1];
-      camBearing = tb;
-      camInit = true;
-      map.easeTo({
-        center: s.pos,
-        zoom: camMode === 'chase' ? 14.2 : 12.2,
-        pitch: camMode === 'chase' ? 68 : 45,
-        bearing: tb,
-        duration: 1000
-      });
+      camBearing = tb; camZoom = tz; camPitch = tp; camInit = true;
+      map.easeTo({ center:s.pos, zoom:tz, pitch:tp, bearing:tb, duration:1000 });
     }
   });
 });
